@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://happi.local/schemas/job.schema.json",
+  "title": "happi-agent job v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "id",
+    "prompt",
+    "collectors",
+    "timeout_seconds",
+    "validation"
+  ],
+  "properties": {
+    "version": {"const": 1},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+    },
+    "prompt": {
+      "type": "string",
+      "pattern": "^[^/]+\\.md$"
+    },
+    "collectors": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "enum": [
+          "host.basic",
+          "host.storage",
+          "host.services",
+          "network.summary"
+        ]
+      }
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 86400
+    },
+    "validation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_files", "max_diff_bytes"],
+      "properties": {
+        "max_files": {"type": "integer", "minimum": 1, "maximum": 10000},
+        "max_diff_bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 104857600
+        },
+        "forbidden_paths": {
+          "$ref": "#/$defs/nonEmptyUniqueStrings"
+        },
+        "allowed_paths": {
+          "$ref": "#/$defs/nonEmptyUniqueStrings"
+        },
+        "allowed_binary_extensions": {
+          "$ref": "#/$defs/nonEmptyUniqueStrings"
+        }
+      }
+    }
+  },
+  "$defs": {
+    "nonEmptyUniqueStrings": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1}
+    }
+  }
+}
+

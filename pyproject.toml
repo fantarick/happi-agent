@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=66"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "happi-agent"
+version = "0.1.0"
+description = "Conservative local orchestrator for unattended Codex CLI jobs"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+dependencies = []
+
+[project.scripts]
+happi-agent = "happi_agent.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

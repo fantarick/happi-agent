@@ -1,0 +1,22 @@
+version: 1
+id: machine-audit-happi
+prompt: machine-audit-happi.md
+collectors:
+  - host.basic
+  - host.storage
+  - host.services
+  - network.summary
+timeout_seconds: 900
+validation:
+  max_files: 12
+  max_diff_bytes: 262144
+  forbidden_paths:
+    - ".git/**"
+    - "**/.git/**"
+    - ".github/**"
+    - ".codex/**"
+    - "AGENTS.md"
+  allowed_paths:
+    - "README.md"
+    - "audits/raspberry-pi-5/**"
+    - "remediations/raspberry-pi-5/**"

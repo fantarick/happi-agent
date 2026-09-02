@@ -1,0 +1,35 @@
+[Unit]
+Description=happi-agent unattended job %i
+Documentation=file:/opt/happi-agent/README.md
+After=local-fs.target network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/happi-agent/config.toml
+
+[Service]
+Type=oneshot
+User=happi-agent
+Group=happi-agent
+Environment=HAPPI_AGENT_CONFIG=/etc/happi-agent/config.toml
+ExecStart=/usr/local/bin/happi-agent run %i
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+UMask=0077
+
+# Deployment must override these paths to match config.toml. The orchestrator needs
+# the shared Git directory writable to create/remove worktrees; the nested Codex
+# workspace-write sandbox does not receive that writable path.
+ReadWritePaths=/var/lib/happi-agent /srv/happi-agent/worktrees /srv/machine-audits/.git
+
