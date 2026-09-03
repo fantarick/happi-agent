@@ -10,6 +10,7 @@ Type=oneshot
 User=happi-agent
 Group=happi-agent
 Environment=HAPPI_AGENT_CONFIG=/etc/happi-agent/config.toml
+Environment=CODEX_HOME=/var/lib/happi-agent/codex
 ExecStart=/usr/local/bin/happi-agent run %i
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -30,6 +31,7 @@ UMask=0077
 
 # Deployment must override these paths to match config.toml. The orchestrator needs
 # the shared Git directory writable to create/remove worktrees; the nested Codex
-# workspace-write sandbox does not receive that writable path.
+# workspace-write sandbox does not receive that writable path. CODEX_HOME is kept
+# under /var/lib/happi-agent so the service uses a dedicated credential cache.
 ReadWritePaths=/var/lib/happi-agent /srv/happi-agent/worktrees /srv/machine-audits/.git
 
