@@ -126,6 +126,8 @@ class SubprocessCodexExecutor:
             "--disable",
             "image_generation",
             "-c",
+            'forced_login_method="chatgpt"',
+            "-c",
             'approval_policy="never"',
             "-c",
             "sandbox_workspace_write.network_access=false",
