@@ -10,6 +10,13 @@ worker, never the control plane.
 - Never give Codex sudo, host network access, arbitrary collector commands,
   writable access to the canonical repository/shared Git directory, or authority
   to commit, push, open a PR or merge.
+- Happi Agent v0.1 uses cached **ChatGPT** authentication for Codex subscription
+  access. Do not add API-key or access-token fallback, do not forward
+  `OPENAI_API_KEY`, `CODEX_API_KEY` or `CODEX_ACCESS_TOKEN`, and keep the dedicated
+  `CODEX_HOME` credential cache out of logs, reports and Git.
+- Treat the credential-read boundary as unverified until the documented non-secret
+  canary in `docs/AUTHENTICATION.md` returns `CANARY_DENIED` on Happi. Do not run a
+  real unattended job if the canary is readable.
 - Invoke subprocesses with structured argv, `shell=False`, bounded timeouts where
   applicable and structured errors.
 - Treat job YAML as untrusted configuration. Only registered collector IDs are
