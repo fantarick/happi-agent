@@ -53,6 +53,10 @@ def kill_switch_active(path: Path) -> bool:
 def codex_process_environment() -> dict[str, str]:
     """Return the minimum host environment needed by the Codex client.
 
+    v0.1 deliberately uses cached ChatGPT authentication. API-key and Codex access
+    token environment variables are never forwarded, so an unrelated shell or
+    service environment cannot silently switch the runner to usage-based API billing.
+
     Model-generated commands receive a separate, empty baseline through Codex's
     shell_environment_policy. This environment is only for the Codex client.
     """
@@ -71,8 +75,6 @@ def codex_process_environment() -> dict[str, str]:
         "HTTPS_PROXY",
         "NO_PROXY",
         "ALL_PROXY",
-        "CODEX_API_KEY",
-        "OPENAI_API_KEY",
     }
     return {key: value for key, value in os.environ.items() if key in allowed}
 
