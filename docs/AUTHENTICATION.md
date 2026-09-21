@@ -94,6 +94,35 @@ The probe never prints the file contents. Preserve the Codex JSONL and stderr as
 artifacts so the result is independently inspectable; do not rely only on the
 agent's prose summary.
 
+### Linux tool-host diagnostic
+
+On Codex CLI 0.154.0 the portable diagnostic surface is `codex sandbox`; the host
+selects the Linux backend. Do not insert a literal `linux` subcommand, because this
+version interprets it as the program to execute.
+
+Codex places temporary self-exec aliases such as `codex-linux-sandbox` at the front
+of the command `PATH`. A `shell_environment_policy.set.PATH` override replaces that
+runtime path and makes bubblewrap fail with:
+
+```text
+bwrap: execvp codex-linux-sandbox: No such file or directory
+```
+
+Happi Agent therefore uses `inherit="core"`, filters the resulting command
+environment to `PATH`, `LANG` and `LC_ALL`, and fixes only the locale through
+`shell_environment_policy.set`. This retains the Codex-owned helper prefix without
+passing API credentials or arbitrary parent variables to model-generated commands.
+
+A non-agentic smoke test for the platform sandbox is:
+
+```bash
+codex sandbox -- /usr/bin/id
+```
+
+This smoke test checks whether the local sandbox can launch a command. It does not
+replace the credential-read canary, which must still return `CANARY_DENIED` through
+`SubprocessCodexExecutor`.
+
 ### Gate
 
 - `CANARY_DENIED`: the credential-read boundary may proceed to the next deployment

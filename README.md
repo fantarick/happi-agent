@@ -24,7 +24,9 @@ base `HEAD`, runs registered Python collectors, and sends their JSON snapshot to
 network access disabled for model-generated commands, ephemeral sessions and JSONL
 output. User config and execpolicy rules are ignored; multi-agent, apps, plugins,
 hooks, browser/computer tools, image generation, MCP servers and web search are
-disabled per invocation.
+disabled per invocation. Model-generated commands inherit only the core environment
+needed to preserve Codex's runtime helper path, filtered to `PATH`, `LANG` and
+`LC_ALL`; the locale is fixed to `C.UTF-8`.
 
 The Codex client itself still needs outbound connectivity to OpenAI as its control
 channel. `network_access=false` applies to commands executed inside the Codex

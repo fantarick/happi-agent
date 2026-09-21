@@ -28,6 +28,24 @@ class CodexExecutorTests(unittest.TestCase):
         self.assertIn("workspace-write", command)
         self.assertIn('approval_policy="never"', command)
         self.assertIn("sandbox_workspace_write.network_access=false", command)
+        self.assertIn('shell_environment_policy.inherit="core"', command)
+        self.assertIn(
+            'shell_environment_policy.include_only=["PATH","LANG","LC_ALL"]',
+            command,
+        )
+        self.assertIn(
+            'shell_environment_policy.set={LANG="C.UTF-8",LC_ALL="C.UTF-8"}',
+            command,
+        )
+        self.assertNotIn('shell_environment_policy.inherit="none"', command)
+        self.assertFalse(
+            any(
+                value.startswith("shell_environment_policy.set=")
+                and "PATH=" in value
+                for value in command
+            ),
+            "an explicit PATH hides Codex's temporary sandbox helper aliases",
+        )
         self.assertNotIn("--full-auto", command)
         self.assertIn("multi_agent", joined)
 

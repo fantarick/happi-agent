@@ -157,7 +157,9 @@ stdin. La configurazione per-run comprende:
 - MCP servers e app vuoti;
 - multi-agent, app, plugin, hook, browser, computer use e image generation
   disabilitati;
-- ambiente dei comandi Codex con baseline `none` e PATH/locale espliciti.
+- ambiente dei comandi Codex con baseline `core`, filtrato a `PATH`, `LANG` e
+  `LC_ALL`, con locale esplicito. `PATH` non viene sovrascritto: Codex 0.154.0 vi
+  antepone gli alias temporanei necessari al sandbox Linux;
 
 stdout JSONL, stderr, ultimo messaggio, exit code, versione e risultato di protocollo
 sono archiviati. Il parser richiede un evento `turn.completed` e un messaggio finale.
@@ -221,22 +223,23 @@ Comando eseguito integralmente:
 PYTHONPATH=src python3 -m unittest discover -s tests -v
 ```
 
-Risultato osservato il 2 settembre 2026:
+Risultato osservato il 21 settembre 2026:
 
 ```text
-Ran 19 tests in 2.437s
+Ran 21 tests in 2.471s
 OK
 ```
 
-- Passati: 19
+- Passati: 21
 - Falliti: 0
 - Skipped: 0
 
 La suite copre parsing configurazione, collector registry, transizioni, lock tra
 processi, run bloccata dal lock, kill switch, timeout e process group, percorsi
 proibiti, massimo file, massimo diff, symlink, binari inattesi, quarantine, cleanup
-success e retention failure. I test Codex usano un fake executor o un eseguibile
-locale fittizio e non contattano OpenAI.
+success, retention failure, policy di autenticazione ChatGPT e configurazione
+fail-closed dell'executor. I test Codex usano un fake executor o un eseguibile locale
+fittizio e non contattano OpenAI.
 
 ## Funzionalità non ancora testate realmente
 
