@@ -9,3 +9,8 @@ so they exactly match the deployment configuration. Do not make the canonical
 working tree writable merely for convenience; only its shared Git directory is
 needed by the orchestrator for worktree administration.
 
+The unit requires `/var/lib/happi-agent/CANARY_DENIED`. This is an operator
+attestation, not a test fixture: do not create it until the real procedure in
+`docs/AUTHENTICATION.md` has returned `CANARY_DENIED` and its raw artifacts have
+been reviewed. The Python runner independently checks the same gate content and
+permissions.

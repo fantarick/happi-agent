@@ -31,12 +31,21 @@ class RunnerTests(unittest.TestCase):
         return record  # type: ignore[return-value]
 
     def test_kill_switch_blocks_before_codex(self) -> None:
-        self.fixture.app.state_dir.mkdir(parents=True)
+        self.fixture.app.state_dir.mkdir(parents=True, exist_ok=True)
         self.fixture.app.effective_kill_switch.write_text("stop\n", encoding="utf-8")
         executor = FakeExecutor()
         outcome = self.runner(executor).run("test-job")
         self.assertEqual(outcome.state, RunState.BLOCKED)
         self.assertEqual(outcome.error_code, "KILL_SWITCH_ACTIVE")
+        self.assertFalse(executor.version_called)
+        self.assertFalse(executor.execute_called)
+
+    def test_missing_credential_boundary_gate_blocks_before_codex(self) -> None:
+        self.fixture.app.effective_credential_boundary_gate.unlink()
+        executor = FakeExecutor()
+        outcome = self.runner(executor).run("test-job")
+        self.assertEqual(outcome.state, RunState.BLOCKED)
+        self.assertEqual(outcome.error_code, "CREDENTIAL_BOUNDARY_UNVERIFIED")
         self.assertFalse(executor.version_called)
         self.assertFalse(executor.execute_called)
 

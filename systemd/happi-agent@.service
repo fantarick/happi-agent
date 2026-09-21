@@ -4,6 +4,7 @@ Documentation=file:/opt/happi-agent/README.md
 After=local-fs.target network-online.target
 Wants=network-online.target
 ConditionPathExists=/etc/happi-agent/config.toml
+ConditionPathExists=/var/lib/happi-agent/CANARY_DENIED
 
 [Service]
 Type=oneshot
@@ -11,6 +12,7 @@ User=happi-agent
 Group=happi-agent
 Environment=HAPPI_AGENT_CONFIG=/etc/happi-agent/config.toml
 Environment=CODEX_HOME=/var/lib/happi-agent/codex
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/local/bin/happi-agent run %i
 NoNewPrivileges=yes
 PrivateTmp=yes
@@ -34,4 +36,3 @@ UMask=0077
 # workspace-write sandbox does not receive that writable path. CODEX_HOME is kept
 # under /var/lib/happi-agent so the service uses a dedicated credential cache.
 ReadWritePaths=/var/lib/happi-agent /srv/happi-agent/worktrees /srv/machine-audits/.git
-

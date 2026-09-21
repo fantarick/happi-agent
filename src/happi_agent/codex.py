@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import signal
+import stat
 import subprocess
 from pathlib import Path
 from typing import Protocol
@@ -16,6 +18,10 @@ class CodexError(RuntimeError):
         super().__init__(message)
         self.code = code
         self.message = message
+
+
+TOOL_HOST_BOUNDARY_MARKER = "HAPPI_CODE_MODE_HOST_ISOLATED_V1"
+SUPPORTED_CODEX_VERSION = "codex-cli 0.154.0"
 
 
 class CodexExecutor(Protocol):
@@ -80,7 +86,70 @@ class SubprocessCodexExecutor:
         self.binary = binary
         self.termination_grace_seconds = termination_grace_seconds
 
+    def _verify_tool_host_boundary(self) -> None:
+        """Fail closed unless the co-located sidecar is the isolation wrapper."""
+
+        environment = codex_process_environment()
+        binary_path = shutil.which(self.binary, path=environment.get("PATH"))
+        if binary_path is None:
+            raise CodexError(
+                "CODEX_UNAVAILABLE", f"cannot resolve Codex binary: {self.binary}"
+            )
+        resolved_binary = Path(binary_path).resolve()
+        tool_host = resolved_binary.with_name("codex-code-mode-host")
+        try:
+            client_metadata = resolved_binary.stat()
+            host_metadata = tool_host.lstat()
+        except OSError as exc:
+            raise CodexError(
+                "CODEX_CREDENTIAL_BOUNDARY_UNAVAILABLE",
+                f"cannot inspect Codex tool-host boundary: {exc}",
+            ) from exc
+        if not stat.S_ISREG(host_metadata.st_mode) or tool_host.is_symlink():
+            raise CodexError(
+                "CODEX_CREDENTIAL_BOUNDARY_UNAVAILABLE",
+                "Codex tool-host boundary must be a regular, non-symlink file",
+            )
+        if host_metadata.st_uid != client_metadata.st_uid:
+            raise CodexError(
+                "CODEX_CREDENTIAL_BOUNDARY_UNAVAILABLE",
+                "Codex client and tool-host boundary have different owners",
+            )
+        if (client_metadata.st_mode | host_metadata.st_mode) & 0o022:
+            raise CodexError(
+                "CODEX_CREDENTIAL_BOUNDARY_UNAVAILABLE",
+                "Codex client or tool-host boundary is group/world writable",
+            )
+        try:
+            completed = subprocess.run(
+                (str(tool_host), "--happi-isolation-check"),
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+                check=False,
+                shell=False,
+                env=environment,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise CodexError(
+                "CODEX_CREDENTIAL_BOUNDARY_UNAVAILABLE",
+                f"cannot probe Codex tool-host boundary: {exc}",
+            ) from exc
+        if (
+            completed.returncode != 0
+            or completed.stdout != f"{TOOL_HOST_BOUNDARY_MARKER}\n"
+        ):
+            raise CodexError(
+                "CODEX_CREDENTIAL_BOUNDARY_UNAVAILABLE",
+                "Codex tool-host isolation wrapper did not attest",
+            )
+
     def version(self) -> str:
+        self._verify_tool_host_boundary()
         try:
             completed = subprocess.run(
                 (self.binary, "--version"),
@@ -105,6 +174,11 @@ class SubprocessCodexExecutor:
         version = completed.stdout.strip()
         if not version:
             raise CodexError("CODEX_VERSION_FAILED", "Codex returned an empty version")
+        if version != SUPPORTED_CODEX_VERSION:
+            raise CodexError(
+                "UNSUPPORTED_CODEX_VERSION",
+                f"credential boundary is validated only for {SUPPORTED_CODEX_VERSION}; got {version}",
+            )
         return version
 
     def command(self, workspace: Path) -> tuple[str, ...]:
@@ -172,6 +246,7 @@ class SubprocessCodexExecutor:
             raise ValueError("timeout_seconds must be positive")
         if not workspace.is_dir():
             raise CodexError("WORKSPACE_MISSING", f"workspace missing: {workspace}")
+        self.version()
         try:
             process = subprocess.Popen(
                 self.command(workspace),

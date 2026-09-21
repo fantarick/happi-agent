@@ -8,10 +8,26 @@ from pathlib import Path
 from unittest.mock import patch
 
 from happi_agent.codex import (
+    CodexError,
     SubprocessCodexExecutor,
+    TOOL_HOST_BOUNDARY_MARKER,
     _final_message_and_protocol_error,
     _tool_host_protocol_error,
 )
+
+
+def _write_boundary_probe(path: Path) -> None:
+    path.write_text(
+        "#!/bin/sh\n"
+        "if [ \"$#\" -eq 1 ] && "
+        "[ \"$1\" = \"--happi-isolation-check\" ]; then\n"
+        f"  printf '%s\\n' {TOOL_HOST_BOUNDARY_MARKER}\n"
+        "  exit 0\n"
+        "fi\n"
+        "exit 64\n",
+        encoding="utf-8",
+    )
+    path.chmod(0o755)
 
 
 class CodexExecutorTests(unittest.TestCase):
@@ -67,6 +83,9 @@ class CodexExecutorTests(unittest.TestCase):
                 """#!/usr/bin/python3
 import json
 import sys
+if '--version' in sys.argv:
+    print('codex-cli 0.154.0')
+    raise SystemExit(0)
 print(json.dumps({'type': 'turn.started'}))
 print(json.dumps({'type': 'item.completed', 'item': {
     'type': 'agent_message',
@@ -78,6 +97,7 @@ print('ERROR failed to spawn code-mode host: No such file', file=sys.stderr)
                 encoding="utf-8",
             )
             binary.chmod(0o755)
+            _write_boundary_probe(root / "codex-code-mode-host")
             workspace = root / "workspace"
             workspace.mkdir()
             environment = {"PATH": f"{root}:{os.environ.get('PATH', '')}"}
@@ -100,7 +120,7 @@ import subprocess
 import sys
 import time
 if '--version' in sys.argv:
-    print('fake-codex 1')
+    print('codex-cli 0.154.0')
     raise SystemExit(0)
 child = subprocess.Popen(['sleep', '60'])
 open('child.pid', 'w', encoding='utf-8').write(str(child.pid))
@@ -110,6 +130,7 @@ time.sleep(60)
                 encoding="utf-8",
             )
             binary.chmod(0o755)
+            _write_boundary_probe(root / "codex-code-mode-host")
             workspace = root / "workspace"
             workspace.mkdir()
             environment = {"PATH": f"{root}:{os.environ.get('PATH', '')}"}
@@ -124,6 +145,34 @@ time.sleep(60)
             if proc_stat.exists():
                 state = proc_stat.read_text().split()[2]
                 self.assertEqual(state, "Z", "child process still running after timeout")
+
+    def test_version_rejects_unwrapped_tool_host(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / "fake-codex"
+            binary.write_text("#!/bin/sh\necho fake-codex 1\n", encoding="utf-8")
+            binary.chmod(0o755)
+            host = root / "codex-code-mode-host"
+            host.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+            host.chmod(0o755)
+            with patch.dict(os.environ, {"PATH": str(root)}, clear=True):
+                with self.assertRaises(CodexError) as context:
+                    SubprocessCodexExecutor("fake-codex").version()
+            self.assertEqual(
+                context.exception.code, "CODEX_CREDENTIAL_BOUNDARY_UNAVAILABLE"
+            )
+
+    def test_version_rejects_unreviewed_codex_release(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            binary = root / "fake-codex"
+            binary.write_text("#!/bin/sh\necho codex-cli 0.155.0\n", encoding="utf-8")
+            binary.chmod(0o755)
+            _write_boundary_probe(root / "codex-code-mode-host")
+            with patch.dict(os.environ, {"PATH": str(root)}, clear=True):
+                with self.assertRaises(CodexError) as context:
+                    SubprocessCodexExecutor("fake-codex").version()
+            self.assertEqual(context.exception.code, "UNSUPPORTED_CODEX_VERSION")
 
 
 if __name__ == "__main__":

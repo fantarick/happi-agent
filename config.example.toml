@@ -6,7 +6,10 @@ jobs_dir = "jobs"
 prompts_dir = "prompts"
 codex_binary = "codex"
 
+# Mandatory operator attestation. Create this exact file only after the real
+# credential-read canary has produced CANARY_DENIED and its artifacts were reviewed.
+credential_boundary_gate = ".local/state/CANARY_DENIED"
+
 # Optional overrides; defaults live under state_dir.
 # lock_file = ".local/state/happi-agent.lock"
 # kill_switch = ".local/state/KILL_SWITCH"
-

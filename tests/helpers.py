@@ -101,6 +101,11 @@ class ProjectFixture:
             prompts_dir=self.prompts,
             codex_binary="codex",
         )
+        self.app.state_dir.mkdir(parents=True)
+        self.app.effective_credential_boundary_gate.write_text(
+            "CANARY_DENIED\n", encoding="utf-8"
+        )
+        self.app.effective_credential_boundary_gate.chmod(0o600)
         self.registry = CollectorRegistry()
         self.registry.register(StaticCollector())
 
@@ -132,4 +137,3 @@ validation:
 
     def close(self) -> None:
         self.temporary.cleanup()
-

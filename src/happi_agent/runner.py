@@ -18,7 +18,13 @@ from happi_agent.models import (
     ValidationPolicy,
     ValidationResult,
 )
-from happi_agent.security import GlobalRunLock, kill_switch_active, sha256_bytes
+from happi_agent.security import (
+    GlobalRunLock,
+    SecurityError,
+    kill_switch_active,
+    sha256_bytes,
+    verify_credential_boundary_gate,
+)
 from happi_agent.state import StateStore, utc_now
 from happi_agent.validator import Validator
 from happi_agent.workspace import Workspace, WorkspaceManager
@@ -114,6 +120,25 @@ class Runner:
                     error_detail="global kill switch is present",
                 )
                 return RunOutcome(run_id, RunState.BLOCKED, "KILL_SWITCH_ACTIVE")
+
+            try:
+                verify_credential_boundary_gate(
+                    self.app.effective_credential_boundary_gate
+                )
+            except SecurityError as exc:
+                self.state.transition(
+                    run_id,
+                    RunState.BLOCKED,
+                    code="CREDENTIAL_BOUNDARY_UNVERIFIED",
+                    details={
+                        "gate": str(self.app.effective_credential_boundary_gate)
+                    },
+                    error_code="CREDENTIAL_BOUNDARY_UNVERIFIED",
+                    error_detail=str(exc),
+                )
+                return RunOutcome(
+                    run_id, RunState.BLOCKED, "CREDENTIAL_BOUNDARY_UNVERIFIED"
+                )
 
             self.state.transition(run_id, RunState.PREFLIGHT, code="PREFLIGHT_STARTED")
             base_commit, _ = self.workspaces.preflight()

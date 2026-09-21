@@ -84,6 +84,7 @@ class AppConfig:
     codex_binary: str = "codex"
     lock_file: Path | None = None
     kill_switch: Path | None = None
+    credential_boundary_gate: Path | None = None
 
     @property
     def effective_lock_file(self) -> Path:
@@ -92,6 +93,10 @@ class AppConfig:
     @property
     def effective_kill_switch(self) -> Path:
         return self.kill_switch or self.state_dir / "KILL_SWITCH"
+
+    @property
+    def effective_credential_boundary_gate(self) -> Path:
+        return self.credential_boundary_gate or self.state_dir / "CANARY_DENIED"
 
 
 @dataclass(frozen=True)
@@ -135,4 +140,3 @@ class RunOutcome:
     run_id: str
     state: RunState
     error_code: str | None = None
-

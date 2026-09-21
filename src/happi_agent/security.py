@@ -3,6 +3,7 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import os
+import stat
 from pathlib import Path
 from types import TracebackType
 from typing import IO
@@ -48,6 +49,34 @@ def ensure_separate_worktree_root(
 
 def kill_switch_active(path: Path) -> bool:
     return path.exists()
+
+
+def verify_credential_boundary_gate(path: Path) -> None:
+    """Require a local operator attestation for the real credential canary.
+
+    The gate is deliberately outside CODEX_HOME. The isolated tool host cannot see
+    it, while the deterministic control plane can refuse all runs until an operator
+    has reviewed a real canary and installed the exact marker.
+    """
+
+    try:
+        metadata = path.lstat()
+    except FileNotFoundError as exc:
+        raise SecurityError(f"credential boundary gate is missing: {path}") from exc
+    if not stat.S_ISREG(metadata.st_mode):
+        raise SecurityError("credential boundary gate must be a regular file")
+    if metadata.st_mode & 0o022:
+        raise SecurityError(
+            "credential boundary gate must not be writable by group or others"
+        )
+    if metadata.st_uid not in {0, os.geteuid()}:
+        raise SecurityError("credential boundary gate has an unexpected owner")
+    try:
+        value = path.read_bytes()
+    except OSError as exc:
+        raise SecurityError(f"cannot read credential boundary gate: {exc}") from exc
+    if value != b"CANARY_DENIED\n":
+        raise SecurityError("credential boundary gate has invalid content")
 
 
 def codex_process_environment() -> dict[str, str]:

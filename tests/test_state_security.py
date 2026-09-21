@@ -7,7 +7,11 @@ import uuid
 from pathlib import Path
 
 from happi_agent.models import RunState
-from happi_agent.security import GlobalRunLock
+from happi_agent.security import (
+    GlobalRunLock,
+    SecurityError,
+    verify_credential_boundary_gate,
+)
 from happi_agent.state import IllegalTransition, StateStore
 
 
@@ -20,6 +24,24 @@ def _try_lock(path: str, queue: multiprocessing.Queue[bool]) -> None:
 
 
 class StateAndLockTests(unittest.TestCase):
+    def test_credential_boundary_gate_is_exact_and_not_a_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            gate = root / "gate"
+            gate.write_text("CANARY_DENIED\n", encoding="utf-8")
+            gate.chmod(0o600)
+            verify_credential_boundary_gate(gate)
+
+            gate.write_text("CANARY_READABLE\n", encoding="utf-8")
+            with self.assertRaises(SecurityError):
+                verify_credential_boundary_gate(gate)
+
+            gate.write_text("CANARY_DENIED\n", encoding="utf-8")
+            link = root / "link"
+            link.symlink_to(gate)
+            with self.assertRaises(SecurityError):
+                verify_credential_boundary_gate(link)
+
     def test_illegal_state_transition_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             store = StateStore(Path(temporary) / "state.sqlite3")
@@ -48,4 +70,3 @@ class StateAndLockTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

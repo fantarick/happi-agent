@@ -28,6 +28,13 @@ disabled per invocation. Model-generated commands start from an empty environmen
 with a fixed `PATH` and `C.UTF-8` locale; Codex prepends its own packaged command
 path when it launches them.
 
+On Happi, the co-located `codex-code-mode-host` name is a root-owned wrapper. The
+Codex client remains outside and can read its ChatGPT credential cache; the sidecar
+and all of its descendants run in an additional bubblewrap mount/PID/network
+namespace that does not contain the real `CODEX_HOME`. The worktree is its only
+host-writable bind mount and the shared Git directory is read-only. See
+`docs/CREDENTIAL_BOUNDARY.md`.
+
 The Codex client itself still needs outbound connectivity to OpenAI as its control
 channel. `network_access=false` applies to commands executed inside the Codex
 sandbox, preventing repository code or model-generated shell commands from using
@@ -46,6 +53,8 @@ Illegal transitions raise a structured `ILLEGAL_TRANSITION` error.
 
 - Exactly one run may own the global `flock`; a contender is recorded as `BLOCKED`.
 - A configured sentinel blocks new work before preflight.
+- A missing, malformed or weakly-permissioned `CANARY_DENIED` operator gate blocks
+  every run before Codex is invoked.
 - Job files cannot supply commands, argv, shell fragments or collector parameters.
   They may only name collector IDs compiled into the Python registry.
 - All orchestrator subprocesses use argv arrays and `shell=False`.
@@ -91,9 +100,10 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 ## Manual dry-run
 
 The example config points at `../../machine-audits` and writes only under this
-project's ignored `.local/` directory. Review those paths first, make sure the
-canonical repository has a valid `HEAD`, and ensure `codex --version` and Codex
-authentication work for the current unprivileged user.
+project's ignored `.local/` directory. It is intentionally blocked unless its
+credential boundary gate exists. Do not fabricate that gate for convenience: use
+these commands only after the real Happi canary has passed and the reviewed
+deployment boundary is active.
 
 ```bash
 HAPPI_AGENT_CONFIG="$PWD/config.example.toml" PYTHONPATH="$PWD/src" \
@@ -109,11 +119,12 @@ confirm `BLOCKED`, then remove only that sentinel.
 
 ## Residual limits
 
-- Codex CLI's Linux sandbox is part of the trust boundary. Run the service as a
-  dedicated unprivileged user and keep Codex current.
-- The orchestrator and Codex client currently share an OS uid in the development
-  setup. Sandbox policy prevents worker writes outside the worktree, but stronger
-  uid-level separation would require a separately designed privilege boundary.
+- Codex CLI's Linux sandbox is part of the trust boundary. v0.1 pins 0.154.0; treat
+  any upgrade as incompatible until the wrapper and real canary are revalidated.
+- The orchestrator and Codex client share an OS uid. The additional sidecar mount
+  namespace removes the model-controlled process tree's view of `CODEX_HOME`; it
+  does not protect against compromise of the trusted Codex client itself or of the
+  deterministic Python control plane.
 - stdout/stderr capture is in memory in v0.1; a malicious or defective client could
   cause memory pressure before artifacts are saved.
 - Because v0.1 intentionally has no custom execpolicy, it cannot reject a command

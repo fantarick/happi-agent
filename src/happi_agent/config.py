@@ -58,6 +58,7 @@ def load_app_config(path: Path) -> AppConfig:
             "codex_binary",
             "lock_file",
             "kill_switch",
+            "credential_boundary_gate",
         },
         "application config",
     )
@@ -89,6 +90,13 @@ def load_app_config(path: Path) -> AppConfig:
         if "kill_switch" in raw
         else None
     )
+    credential_boundary_gate = (
+        _resolve_path(
+            raw["credential_boundary_gate"], base, "credential_boundary_gate"
+        )
+        if "credential_boundary_gate" in raw
+        else None
+    )
     return AppConfig(
         state_dir=_resolve_path(raw["state_dir"], base, "state_dir"),
         worktree_root=_resolve_path(
@@ -102,6 +110,7 @@ def load_app_config(path: Path) -> AppConfig:
         codex_binary=binary,
         lock_file=lock_file,
         kill_switch=kill_switch,
+        credential_boundary_gate=credential_boundary_gate,
     )
 
 
@@ -348,6 +357,9 @@ def resolved_config_hash(app: AppConfig, job: JobConfig) -> str:
             "codex_binary": app.codex_binary,
             "lock_file": str(app.effective_lock_file),
             "kill_switch": str(app.effective_kill_switch),
+            "credential_boundary_gate": str(
+                app.effective_credential_boundary_gate
+            ),
         },
         "job": {
             "version": job.version,

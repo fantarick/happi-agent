@@ -22,14 +22,15 @@ controllo dell'orchestratore.
 - Branch base: `main`
 - Baseline `main`: `8350039ae5378c50a4f98d3413b2a056d0653367`
 - Branch di handoff: `agent/implementation-v0.1`
-- HEAD SHA finale dell'implementazione sottoposta ad audit:
-  `880fbc70696e37019509939b21be995fcd099698`
+- Ultimo HEAD committato prima della remediation P0:
+  `0064654` (`fix: diagnose incomplete Codex tool host bundle`).
+- La remediation del risultato reale `CANARY_READABLE` è nel working tree per
+  revisione operatore. Codex non ha autorità di commit, push o modifica PR.
 - Remote: `origin https://github.com/fantarick/happi-agent.git`
 
-Il report è aggiunto in un commit documentale successivo alla baseline immutabile
-dell'implementazione indicata sopra. Lo SHA del commit che contiene questo stesso
-file non può essere incorporato letteralmente nel file senza cambiare il commit; il
-branch head autoritativo è quello esposto dalla Draft PR e da:
+Il working tree, non la Draft PR, è al momento la sorgente autoritativa della
+remediation. Dopo revisione, l'operatore può verificarne il commit e l'eventuale
+pubblicazione con:
 
 ```bash
 git rev-parse agent/implementation-v0.1
@@ -43,10 +44,13 @@ git ls-remote origin refs/heads/agent/implementation-v0.1
 ├── AGENTS.md
 ├── README.md
 ├── config.example.toml
+├── deployment/codex-code-mode-host
+├── docs/CREDENTIAL_BOUNDARY.md
 ├── jobs/machine-audit-happi.yaml
 ├── prompts/machine-audit-happi.md
 ├── pyproject.toml
 ├── schemas/job.schema.json
+├── scripts/credential_read_canary.py
 ├── src/happi_agent/
 │   ├── cli.py
 │   ├── codex.py
@@ -80,7 +84,8 @@ git ls-remote origin refs/heads/agent/implementation-v0.1
 - `state.py`: mantiene run, eventi, artifact e transizioni in SQLite.
 - `workspace.py`: crea e rimuove worktree Git detached sotto una root separata.
 - `codex.py`: invoca Codex CLI con argv strutturati, JSONL, policy esplicite e timeout
-  dell'intero process group.
+  dell'intero process group; rifiuta release diverse da 0.154.0 e sidecar senza
+  attestazione del wrapper.
 - `validator.py`: valuta deterministicamente il contenuto del worktree e produce un
   `ValidationResult` strutturato.
 - `security.py`: contiene hash SHA-256, kill switch, lock globale e controlli sui
@@ -205,6 +210,8 @@ Un lock non bloccante basato su `flock(2)` garantisce una sola run per volta tra
 processi. Una seconda run viene comunque registrata e termina `BLOCKED` con
 `GLOBAL_LOCK_BUSY`. La presenza del sentinel configurato blocca una nuova run prima
 del preflight con `KILL_SWITCH_ACTIVE`.
+L'assenza o invalidità dell'attestazione operatore `CANARY_DENIED` blocca inoltre la
+run con `CREDENTIAL_BOUNDARY_UNVERIFIED` prima di invocare Codex.
 
 ## Retention e quarantine
 
@@ -227,11 +234,11 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Risultato osservato il 21 settembre 2026:
 
 ```text
-Ran 23 tests in 2.519s
+Ran 29 tests in 2.651s
 OK
 ```
 
-- Passati: 23
+- Passati: 29
 - Falliti: 0
 - Skipped: 0
 
@@ -239,12 +246,16 @@ La suite copre parsing configurazione, collector registry, transizioni, lock tra
 processi, run bloccata dal lock, kill switch, timeout e process group, percorsi
 proibiti, massimo file, massimo diff, symlink, binari inattesi, quarantine, cleanup
 success, retention failure, policy di autenticazione ChatGPT e configurazione
-fail-closed dell'executor. I test Codex usano un fake executor o un eseguibile locale
-fittizio e non contattano OpenAI.
+fail-closed dell'executor. La suite verifica anche gate operatore, attestazione del
+wrapper, occultamento della canary e disponibilità di user namespace annidati. I
+test Codex usano un fake executor o un eseguibile locale fittizio e non contattano
+OpenAI.
 
 ## Funzionalità non ancora testate realmente
 
 - Una run completa con Codex CLI autenticato e servizi OpenAI reali.
+- La canary reale post-installazione su Happi: il gate resta chiuso finché non
+  restituisce `CANARY_DENIED`.
 - L'esecuzione unattended completa su Raspberry Pi 5 target con tutti i collector.
 - La verifica empirica dell'assenza di egress dai comandi nel sandbox Codex sulla
   macchina target.
