@@ -60,6 +60,17 @@ def _final_message_and_protocol_error(stdout_jsonl: str) -> tuple[str, str | Non
     return final_message, None
 
 
+def _tool_host_protocol_error(final_message: str, stderr: str) -> str | None:
+    """Recognize Codex tool-host startup failures that may still exit zero."""
+
+    if "failed to spawn code-mode host" in stderr.lower():
+        return "Codex tool host unavailable"
+    normalized_message = final_message.strip().lower().removesuffix(".")
+    if normalized_message == "command could not run: tool host unavailable":
+        return "Codex tool host unavailable"
+    return None
+
+
 class SubprocessCodexExecutor:
     """Codex CLI worker with explicit, fail-closed per-run policy."""
 
@@ -138,11 +149,9 @@ class SubprocessCodexExecutor:
             "-c",
             "sandbox_workspace_write.exclude_tmpdir_env_var=true",
             "-c",
-            'shell_environment_policy.inherit="core"',
+            'shell_environment_policy.inherit="none"',
             "-c",
-            'shell_environment_policy.include_only=["PATH","LANG","LC_ALL"]',
-            "-c",
-            'shell_environment_policy.set={LANG="C.UTF-8",LC_ALL="C.UTF-8"}',
+            'shell_environment_policy.set={PATH="/usr/local/bin:/usr/bin:/bin",LANG="C.UTF-8",LC_ALL="C.UTF-8"}',
             "-c",
             "allow_login_shell=false",
             "-c",
@@ -194,6 +203,9 @@ class SubprocessCodexExecutor:
                 self._kill_process_group(process)
                 stdout, stderr = process.communicate()
         final_message, protocol_error = _final_message_and_protocol_error(stdout)
+        tool_host_error = _tool_host_protocol_error(final_message, stderr)
+        if protocol_error is None and tool_host_error is not None:
+            protocol_error = tool_host_error
         return CodexExecutionResult(
             stdout_jsonl=stdout,
             stderr=stderr,

@@ -100,18 +100,41 @@ On Codex CLI 0.154.0 the portable diagnostic surface is `codex sandbox`; the hos
 selects the Linux backend. Do not insert a literal `linux` subcommand, because this
 version interprets it as the program to execute.
 
-Codex places temporary self-exec aliases such as `codex-linux-sandbox` at the front
-of the command `PATH`. A `shell_environment_policy.set.PATH` override replaces that
-runtime path and makes bubblewrap fail with:
+`codex sandbox -- /usr/bin/id` only exercises the sandbox backend. It does not
+exercise the code-mode tool host used by `codex exec`. The 0.154.0 standalone Linux
+bundle contains two co-versioned executables in its `bin` directory:
 
 ```text
-bwrap: execvp codex-linux-sandbox: No such file or directory
+codex
+codex-code-mode-host
 ```
 
-Happi Agent therefore uses `inherit="core"`, filters the resulting command
-environment to `PATH`, `LANG` and `LC_ALL`, and fixes only the locale through
-`shell_environment_policy.set`. This retains the Codex-owned helper prefix without
-passing API credentials or arbitrary parent variables to model-generated commands.
+Copying only the `codex` ELF into `/usr/local/bin` is an incomplete installation.
+The client can still authenticate and return exit code zero, but a requested shell
+command fails before bubblewrap starts. The diagnostic signature is:
+
+```text
+failed to spawn code-mode host /usr/local/bin/codex-code-mode-host:
+No such file or directory (os error 2)
+```
+
+Resolve the executable and verify the matching sidecar without reading any Codex
+credential file:
+
+```bash
+codex_executable="$(readlink -f "$(command -v codex)")"
+test -x "$(dirname "$codex_executable")/codex-code-mode-host"
+```
+
+The official standalone installer keeps package metadata and the complete release
+bundle under `CODEX_HOME/packages/standalone`; the visible `codex` command points
+into that bundle. If a system-wide binary is provisioned manually, install the
+co-versioned `codex-code-mode-host` beside it as well.
+
+Happi Agent gives model-generated commands an empty baseline plus a fixed `PATH`
+and locale. Codex 0.154.0 prepends its packaged command path when launching those
+commands. `SubprocessCodexExecutor` also treats the known tool-host failure as a
+protocol error even when Codex exits zero.
 
 A non-agentic smoke test for the platform sandbox is:
 
@@ -120,8 +143,8 @@ codex sandbox -- /usr/bin/id
 ```
 
 This smoke test checks whether the local sandbox can launch a command. It does not
-replace the credential-read canary, which must still return `CANARY_DENIED` through
-`SubprocessCodexExecutor`.
+check the code-mode sidecar and does not replace the credential-read canary, which
+must still return `CANARY_DENIED` through `SubprocessCodexExecutor`.
 
 ### Gate
 

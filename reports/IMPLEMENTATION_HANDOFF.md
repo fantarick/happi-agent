@@ -157,13 +157,14 @@ stdin. La configurazione per-run comprende:
 - MCP servers e app vuoti;
 - multi-agent, app, plugin, hook, browser, computer use e image generation
   disabilitati;
-- ambiente dei comandi Codex con baseline `core`, filtrato a `PATH`, `LANG` e
-  `LC_ALL`, con locale esplicito. `PATH` non viene sovrascritto: Codex 0.154.0 vi
-  antepone gli alias temporanei necessari al sandbox Linux;
+- ambiente dei comandi Codex con baseline vuota, `PATH` deterministico e locale
+  esplicito. Codex 0.154.0 antepone il proprio command path confezionato;
 
 stdout JSONL, stderr, ultimo messaggio, exit code, versione e risultato di protocollo
-sono archiviati. Il parser richiede un evento `turn.completed` e un messaggio finale.
-Il timeout invia prima SIGTERM e poi SIGKILL all'intero process group.
+sono archiviati. Il parser richiede un evento `turn.completed` e un messaggio finale;
+inoltre converte in errore di protocollo la firma nota di un code-mode tool host
+mancante, anche se Codex termina con exit code zero. Il timeout invia prima SIGTERM
+e poi SIGKILL all'intero process group.
 
 ## Collector implementati
 
@@ -226,11 +227,11 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Risultato osservato il 21 settembre 2026:
 
 ```text
-Ran 21 tests in 2.471s
+Ran 23 tests in 2.519s
 OK
 ```
 
-- Passati: 21
+- Passati: 23
 - Falliti: 0
 - Skipped: 0
 
@@ -252,6 +253,9 @@ fittizio e non contattano OpenAI.
 - Il recupero operativo manuale di worktree quarantinati in produzione.
 - Compatibilità con future versioni Codex CLI differenti da quella ispezionata
   durante lo sviluppo.
+- Completezza del bundle Codex nel deployment: la CLI standalone 0.154.0 richiede
+  `codex-code-mode-host` co-versionato accanto al binario `codex`; il solo binario
+  principale non è sufficiente per i tool di `codex exec`.
 
 ## Limitazioni note e rischi di sicurezza residui
 
