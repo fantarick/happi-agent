@@ -173,6 +173,87 @@ class WorkflowControllerTests(unittest.TestCase):
             "human_decision_required",
         )
 
+    def test_review_must_cover_exact_contract_criteria(self) -> None:
+        workflow_id = "review-coverage"
+        self.prepare_engineering(workflow_id)
+        workspace = self.controller.store.workspace(workflow_id)
+        path = workspace.path / "docs" / "audit.md"
+        path.write_text(path.read_text(encoding="utf-8") + "updated\n", encoding="utf-8")
+        self.controller.ingest_engineer_handoff(
+            workflow_id, self.engineer_handoff(workflow_id, 1)
+        )
+        policy = load_validation_policy("test-policy", self.fixture.app)
+        self.controller.verify(workflow_id, policy)
+
+        review = json.loads(self.approved_review().decode())
+        review["acceptance_criteria"] = []
+        with self.assertRaises(WorkflowError) as caught:
+            self.controller.ingest_architect_review(
+                workflow_id, json.dumps(review).encode()
+            )
+        self.assertEqual(caught.exception.code, "REVIEW_CRITERIA_MISMATCH")
+        self.assertEqual(
+            self.controller.store.snapshot(workflow_id).state,
+            WorkflowState.REVIEW_REQUIRED,
+        )
+
+    def test_tampered_contract_artifact_blocks_review(self) -> None:
+        workflow_id = "tampered-contract"
+        self.prepare_engineering(workflow_id)
+        workspace = self.controller.store.workspace(workflow_id)
+        path = workspace.path / "docs" / "audit.md"
+        path.write_text(path.read_text(encoding="utf-8") + "updated\n", encoding="utf-8")
+        self.controller.ingest_engineer_handoff(
+            workflow_id, self.engineer_handoff(workflow_id, 1)
+        )
+        policy = load_validation_policy("test-policy", self.fixture.app)
+        self.controller.verify(workflow_id, policy)
+
+        record = self.controller.status(workflow_id)
+        contract_artifact = next(
+            item for item in record["artifacts"] if item["name"] == "contract.json"
+        )
+        from pathlib import Path
+        Path(contract_artifact["path"]).write_text("{}\n", encoding="utf-8")
+
+        with self.assertRaises(WorkflowError) as caught:
+            self.controller.ingest_architect_review(
+                workflow_id, self.approved_review()
+            )
+        self.assertEqual(caught.exception.code, "ARTIFACT_INTEGRITY_ERROR")
+        self.assertEqual(
+            self.controller.store.snapshot(workflow_id).state,
+            WorkflowState.REVIEW_REQUIRED,
+        )
+
+    def test_workspace_failure_does_not_advance_contract_state(self) -> None:
+        workflow_id = "workspace-failure"
+        self.controller.start(workflow_id, b"intent\n")
+        self.controller.discovery_complete(workflow_id, b"discovery\n")
+
+        class FailingWorkspaceManager:
+            def __init__(self, base_commit: str):
+                self.base_commit = base_commit
+
+            def preflight(self):
+                return self.base_commit, self.fixture_git_dir
+
+            def create(self, workspace_id: str):
+                raise RuntimeError("synthetic workspace failure")
+
+        failing = FailingWorkspaceManager(
+            self.controller.store.base_commit(workflow_id)
+        )
+        failing.fixture_git_dir = self.fixture.repo / ".git"
+        self.controller.workspaces = failing  # type: ignore[assignment]
+
+        with self.assertRaisesRegex(RuntimeError, "synthetic workspace failure"):
+            self.controller.approve_contract(workflow_id, self.contract())
+        self.assertEqual(
+            self.controller.store.snapshot(workflow_id).state,
+            WorkflowState.CONTRACT_REQUIRED,
+        )
+
     def test_iteration_mismatch_fails_closed(self) -> None:
         workflow_id = "iteration-check"
         self.prepare_engineering(workflow_id)
