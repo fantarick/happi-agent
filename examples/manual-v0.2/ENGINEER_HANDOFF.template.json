@@ -1,0 +1,26 @@
+{
+  "protocol_version": "agentic-dev-playbook/v0.2",
+  "type": "engineer_handoff",
+  "status": "READY_FOR_REVIEW",
+  "iteration": 1,
+  "repository_state": {
+    "branch": "detached-worktree",
+    "base_commit": "<BASE_COMMIT>",
+    "head_commit": "<BASE_COMMIT>"
+  },
+  "changes": [
+    "Describe the actual bounded change here."
+  ],
+  "changed_files": [
+    "docs/example.md"
+  ],
+  "verification": [
+    {
+      "check": "engineer-local-check",
+      "result": "PASS",
+      "evidence": "Describe what was actually run."
+    }
+  ],
+  "deviations": [],
+  "known_uncertainty": []
+}
