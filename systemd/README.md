@@ -1,11 +1,11 @@
-# systemd files
+# systemd
 
-`happi-agent@.service` is a deployment template only. This repository does not
-install, enable or start it.
+Happi Agent v0.2 deliberately ships **no unattended model-job systemd unit**.
 
-Before installation, create a dedicated unprivileged `happi-agent` account, place
-the canonical repository outside the worktree root, and override `ReadWritePaths`
-so they exactly match the deployment configuration. Do not make the canonical
-working tree writable merely for convenience; only its shared Git directory is
-needed by the orchestrator for worktree administration.
+The v0.1 `happi-agent@.service` template was removed together with the direct
+Codex executor. Cognitive-worker invocation is a human-visible workflow boundary
+in protocol v0.2.
 
+A future systemd unit may automate deterministic housekeeping or observation only
+after that behavior has a bounded contract and does not invoke a model, merge,
+deploy, or require model credentials.
