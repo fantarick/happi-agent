@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from happi_agent.config import ConfigError, load_app_config, load_job_config
+from happi_agent.config import ConfigError, load_app_config, load_validation_policy
 from happi_agent.state import StateStore
 from happi_agent.workflow import WorkflowController, WorkflowError
 
@@ -49,9 +49,9 @@ def _parser() -> argparse.ArgumentParser:
     )
     verify.add_argument("workflow_id")
     verify.add_argument(
-        "--job",
+        "--policy",
         required=True,
-        help="transitional v0.1 job whose validation policy is reused",
+        help="deterministic validation policy id",
     )
 
     review = workflow_sub.add_parser(
@@ -160,8 +160,8 @@ def _workflow_command(
         return 0
 
     if command == "verify":
-        job = load_job_config(args.job, controller.app)
-        snapshot, result = controller.verify(args.workflow_id, job.validation)
+        policy = load_validation_policy(args.policy, controller.app)
+        snapshot, result = controller.verify(args.workflow_id, policy)
         print(
             json.dumps(
                 {
