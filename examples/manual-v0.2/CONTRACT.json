@@ -1,0 +1,36 @@
+{
+  "protocol_version": "agentic-dev-playbook/v0.2",
+  "type": "feature_contract",
+  "status": "APPROVED",
+  "objective": "Make one bounded documentation update in the disposable repository.",
+  "why": "Exercise the v0.2 reference workflow end to end.",
+  "non_goals": [
+    "No unrelated refactor.",
+    "No dependency changes.",
+    "No automated merge."
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "text": "The intended documentation file contains the bounded update."
+    }
+  ],
+  "invariants": [
+    "Unrelated files remain unchanged.",
+    "Human merge remains required."
+  ],
+  "verification_plan": [
+    {
+      "criterion": "AC1",
+      "verification": "Happi deterministic validation plus independent review."
+    }
+  ],
+  "human_decisions_reserved": [
+    "Final merge decision."
+  ],
+  "escalation_conditions": [
+    "Scope expands.",
+    "Iteration limit is reached.",
+    "A secret would be required."
+  ]
+}

@@ -1,0 +1,7 @@
+Repository discovery completed manually.
+
+Observed scope:
+- one documentation file is the intended edit target;
+- Git worktree creation is supported;
+- deterministic diff validation is available;
+- no destructive operation is required.
