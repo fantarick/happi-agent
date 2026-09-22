@@ -26,45 +26,96 @@ The playbook and Happi remain separate repositories. The playbook is
 tool-agnostic; Happi is a concrete Python/Linux/Git implementation. Releases
 declare the protocol version they implement instead of using a Git submodule.
 
-## v0.2 protocol states
+## v0.2 protocol loop
 
 ```text
-INTENT
-  ↓
+Human intent
+   ↓
 DISCOVERY_REQUIRED
-  ↓
+   ↓
 CONTRACT_REQUIRED
-  ↓
-CONTRACT_READY
-  ↓
+   ↓
+approved structured contract
+   ↓
+workspace prepared
+   ↓
 ENGINEER_REQUIRED
-  ↓
+   ↓
+human invokes repository engineer
+   ↓
+structured engineer handoff
+   ↓
 VERIFYING
-  ↓
+   ↓
+deterministic validation
+   ↓
 REVIEW_REQUIRED
-  ├── APPROVE ─────────► HUMAN_MERGE_REQUIRED
-  ├── REQUEST_CHANGES ─► CHANGES_REQUIRED ─► ENGINEER_REQUIRED
-  └── ESCALATE ────────► ESCALATED
+   ↓
+independent structured review
+   ├─ APPROVE ─────────► HUMAN_MERGE_REQUIRED
+   ├─ REQUEST_CHANGES ─► ENGINEER_REQUIRED
+   └─ ESCALATE ────────► ESCALATED
 ```
 
-`BLOCKED`, `ESCALATED`, and `COMPLETE` are terminal workflow states.
+The default engineering circuit breaker is `MAX_AGENT_ITERATIONS = 3`.
 
-The default engineering circuit breaker is:
+## CLI
+
+The primary interface contains no command that starts Codex or another model:
 
 ```text
-MAX_AGENT_ITERATIONS = 3
+happi-agent workflow start WORKFLOW_ID --intent FILE
+happi-agent workflow discovery-complete WORKFLOW_ID --evidence FILE
+happi-agent workflow contract WORKFLOW_ID CONTRACT.json
+happi-agent workflow engineer-handoff WORKFLOW_ID ENGINEER_HANDOFF.json
+happi-agent workflow verify WORKFLOW_ID --policy POLICY_ID
+happi-agent workflow review WORKFLOW_ID ARCHITECT_REVIEW.json
+happi-agent workflow status WORKFLOW_ID
+happi-agent workflow next WORKFLOW_ID
+happi-agent workflow list
+happi-agent workflow complete WORKFLOW_ID --merged-commit SHA
 ```
+
+Read-only commands remain for historical v0.1 SQLite records:
+
+```text
+happi-agent legacy-runs
+happi-agent legacy-show RUN_ID
+```
+
+## Deterministic validation policies
+
+Validation policy is independent of any model prompt and lives under
+`policies/*.json`.
+
+Example:
+
+```json
+{
+  "version": 1,
+  "id": "machine-audit-happi",
+  "max_files": 12,
+  "max_diff_bytes": 262144,
+  "forbidden_paths": [".git/**", ".github/**"],
+  "allowed_paths": ["README.md", "audits/raspberry-pi-5/**"],
+  "allowed_binary_extensions": []
+}
+```
+
+Runtime enforcement is in standard-library Python. The public shape is documented
+by `schemas/validation-policy.schema.json`.
 
 ## What Happi owns
 
 - deterministic protocol state and transitions;
+- SQLite workflow/event/artifact persistence;
 - repository/worktree lifecycle;
-- persistent audit trail;
-- deterministic validation and evidence;
-- structured engineer/reviewer handoff validation;
+- artifact SHA-256 records;
+- deterministic diff validation;
+- structured contract/engineer/reviewer validation;
 - iteration limits;
 - kill switch and global lock;
-- quarantine/block/escalation;
+- block/escalate routing;
 - next-action reporting.
 
 ## What Happi does not own in v0.2
@@ -76,48 +127,17 @@ MAX_AGENT_ITERATIONS = 3
 - autonomous merge;
 - autonomous deployment.
 
-The human invokes the repository engineer and independent reviewer at explicit
-workflow boundaries.
-
-## Protocol kernel
-
-The first v0.2 executable kernel lives in:
-
-```text
-src/happi_agent/protocol.py
-tests/test_protocol.py
-```
-
-It implements the playbook state machine, strict transition checks, the
-three-iteration circuit breaker, and strict parsing of machine-readable engineer
-handoffs and architect reviews.
-
-Project-local redesign rules live under `.ai/`.
-
 ## Migration from v0.1
 
-This branch intentionally starts at commit:
+This branch started from
+`a97843254d4b83e1941b7d788aa602473e36f306`, the last pre-auth-hardening baseline.
 
-`a97843254d4b83e1941b7d788aa602473e36f306`
+The deterministic pieces were retained and repurposed. The direct Codex executor,
+unattended runner, model prompt/job format and unattended systemd unit have now
+been removed from the v0.2 branch.
 
-That point retains the useful deterministic v0.1 foundation while predating most
-of the credential-boundary hardening experiment.
-
-The following v0.1 components are candidates for reuse:
-
-- SQLite state/audit trail;
-- global lock and kill switch;
-- worktree manager;
-- validators;
-- artifact hashing;
-- quarantine semantics;
-- CI and tests.
-
-The old direct Codex execution path is **legacy during the migration**. It is not
-the desired v0.2 architecture and must not be deployed as the new reference
-implementation merely because it still exists in this transitional branch.
-
-See `docs/PLAYBOOK_REFERENCE_IMPLEMENTATION.md`.
+Their history and the credential-boundary investigation remain preserved in Git
+and in historical Draft PR #1.
 
 ## Development checks
 
@@ -139,8 +159,4 @@ DESTRUCTIVE_ACTIONS_REQUIRE_APPROVAL = true
 
 ## Current status
 
-This is an architectural migration branch, not a production release.
-
-The historical unattended-Codex experiment remains in Draft PR #1 and its
-security evidence should be preserved rather than rewritten as if it never
-happened.
+This remains an architectural migration branch, not a production release.
