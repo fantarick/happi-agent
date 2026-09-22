@@ -16,19 +16,21 @@ Before editing, read:
 - Do not require service-owned ChatGPT/Codex credentials for protocol transitions.
 - Human merge remains mandatory.
 - Enforce the protocol state machine and iteration circuit breaker outside agents.
-- Structured handoffs must be strictly validated before they can authorize a
-  transition.
+- Structured contracts and handoffs must be strictly validated before they can
+  authorize a transition.
 - Tests and repository evidence outrank agent narrative.
 - Preserve append-only/auditable evidence for important transitions.
 - Never expose secrets, tokens, private keys, cookies or credential-bearing logs.
 - Do not silently expand scope, weaken acceptance criteria, or broaden autonomy.
 
-## Migration rule
+## Execution boundary
 
-The direct Codex executor inherited from v0.1 is legacy during this branch.
-Do not extend it. Remove or isolate it only in a bounded follow-up change with
-tests proving that deterministic worktree, validation, lock, kill-switch and audit
-behavior are preserved.
+The v0.1 direct Codex executor and unattended runner have been removed from the
+v0.2 branch. Do not reintroduce a model executor, daemon-owned model credential,
+automatic correction loop or unattended systemd model job as incidental work.
+
+Any future agent-invocation integration requires a separate contract, threat
+model, explicit human approval, and protocol-level compatibility decision.
 
 ## Git authority
 
