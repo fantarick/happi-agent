@@ -9,6 +9,7 @@ from happi_agent.protocol import (
     WorkflowState,
     parse_architect_review,
     parse_engineer_handoff,
+    parse_feature_contract,
     transition,
 )
 
@@ -64,6 +65,36 @@ class HandoffTests(unittest.TestCase):
             "known_uncertainty": [],
         }
 
+    def contract_payload(self) -> dict[str, object]:
+        return {
+            "protocol_version": PROTOCOL_VERSION,
+            "type": "feature_contract",
+            "status": "APPROVED",
+            "objective": "Implement one bounded behavior.",
+            "why": "Protocol test.",
+            "non_goals": [],
+            "acceptance_criteria": [
+                {"id": "AC1", "text": "Behavior is observable."}
+            ],
+            "invariants": ["Human merge required."],
+            "verification_plan": [
+                {"criterion": "AC1", "verification": "unit test"}
+            ],
+            "human_decisions_reserved": ["merge"],
+            "escalation_conditions": ["iteration limit reached"],
+        }
+
+    def test_feature_contract_parses_and_requires_full_verification_map(self) -> None:
+        contract = parse_feature_contract(self.contract_payload())
+        self.assertEqual(contract.status, "APPROVED")
+        self.assertEqual(contract.acceptance_criteria[0][0], "AC1")
+
+        payload = self.contract_payload()
+        payload["verification_plan"] = []
+        with self.assertRaises(ProtocolError) as caught:
+            parse_feature_contract(payload)
+        self.assertEqual(caught.exception.code, "INVALID_CONTRACT")
+
     def test_engineer_handoff_parses(self) -> None:
         handoff = parse_engineer_handoff(self.engineer_payload())
         self.assertEqual(handoff.status, "READY_FOR_REVIEW")
@@ -96,6 +127,37 @@ class HandoffTests(unittest.TestCase):
             }
         )
         self.assertEqual(review.verdict, "APPROVE")
+        self.assertEqual(review.acceptance_results, (("AC1", "PASS"),))
+
+    def test_approve_rejects_failed_or_unknown_criteria(self) -> None:
+        with self.assertRaises(ProtocolError) as caught:
+            parse_architect_review(
+                {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "type": "architect_review",
+                    "verdict": "APPROVE",
+                    "acceptance_criteria": [{"id": "AC1", "result": "UNKNOWN"}],
+                    "blocking_findings": [],
+                    "non_blocking_findings": [],
+                    "residual_uncertainty": [],
+                }
+            )
+        self.assertEqual(caught.exception.code, "INVALID_REVIEW")
+
+    def test_request_changes_requires_blocking_finding(self) -> None:
+        with self.assertRaises(ProtocolError) as caught:
+            parse_architect_review(
+                {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "type": "architect_review",
+                    "verdict": "REQUEST_CHANGES",
+                    "acceptance_criteria": [{"id": "AC1", "result": "FAIL"}],
+                    "blocking_findings": [],
+                    "non_blocking_findings": [],
+                    "residual_uncertainty": [],
+                }
+            )
+        self.assertEqual(caught.exception.code, "INVALID_REVIEW")
 
     def test_architect_review_rejects_unknown_verdict(self) -> None:
         with self.assertRaises(ProtocolError):
