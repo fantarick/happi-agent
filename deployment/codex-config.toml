@@ -1,0 +1,43 @@
+# Trusted Codex 0.154.0 client configuration. In production this exact file is
+# mounted read-only over /var/lib/happi-agent/codex/config.toml.
+forced_login_method = "chatgpt"
+approval_policy = "never"
+allow_login_shell = false
+web_search = "disabled"
+project_doc_max_bytes = 0
+project_doc_fallback_filenames = []
+default_permissions = "happi-workspace-only"
+mcp_servers = {}
+apps = {}
+
+[analytics]
+enabled = false
+
+[shell_environment_policy]
+inherit = "none"
+set = { PATH = "/usr/bin:/bin", LANG = "C.UTF-8", LC_ALL = "C.UTF-8", GIT_OPTIONAL_LOCKS = "0" }
+
+[features]
+multi_agent = false
+apps = false
+plugins = false
+hooks = false
+browser_use = false
+computer_use = false
+image_generation = false
+in_app_browser = false
+
+[permissions.happi-workspace-only.filesystem]
+":root" = "deny"
+":minimal" = "read"
+":tmpdir" = "deny"
+":slash_tmp" = "deny"
+"/opt/codex/0.154.0/bin" = "read"
+"/srv/machine-audits/.git" = "read"
+"/var/lib/happi-agent/codex" = "deny"
+
+[permissions.happi-workspace-only.filesystem.":workspace_roots"]
+"." = "write"
+
+[permissions.happi-workspace-only.network]
+enabled = false

@@ -1,0 +1,41 @@
+[Unit]
+Description=happi-agent unattended job %i
+Documentation=file:/opt/happi-agent/README.md
+After=local-fs.target network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/happi-agent/config.toml
+ConditionPathExists=/var/lib/happi-agent/CANARY_DENIED
+
+[Service]
+Type=oneshot
+User=happi-agent
+Group=happi-agent
+Environment=HAPPI_AGENT_CONFIG=/etc/happi-agent/config.toml
+Environment=CODEX_HOME=/var/lib/happi-agent/codex
+Environment=PATH=/usr/bin:/bin
+ExecStart=/usr/local/bin/happi-agent run %i
+KillMode=control-group
+TimeoutStopSec=15s
+NoNewPrivileges=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=read-only
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+UMask=0077
+
+# Deployment must override these paths to match config.toml. The orchestrator needs
+# the shared Git directory writable to create/remove worktrees; the Codex
+# permission profile exposes it read-only to model-controlled tools. CODEX_HOME is
+# kept under /var/lib/happi-agent and explicitly denied by that profile.
+ReadWritePaths=/var/lib/happi-agent /srv/happi-agent/worktrees /srv/machine-audits/.git
+BindReadOnlyPaths=/etc/happi-agent/codex-config.toml:/var/lib/happi-agent/codex/config.toml

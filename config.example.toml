@@ -1,0 +1,16 @@
+# Development/dry-run configuration. Paths are resolved relative to this file.
+state_dir = ".local/state"
+worktree_root = ".local/worktrees"
+canonical_repo = "../../machine-audits"
+jobs_dir = "jobs"
+prompts_dir = "prompts"
+codex_binary = "/opt/codex/0.154.0/bin/codex"
+codex_config = "/var/lib/happi-agent/codex/config.toml"
+
+# Mandatory operator attestation. Create this exact file only after the real
+# credential-read canary has produced CANARY_DENIED and its artifacts were reviewed.
+credential_boundary_gate = ".local/state/CANARY_DENIED"
+
+# Optional overrides; defaults live under state_dir.
+# lock_file = ".local/state/happi-agent.lock"
+# kill_switch = ".local/state/KILL_SWITCH"

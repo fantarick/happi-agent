@@ -1,0 +1,87 @@
+#!/bin/sh
+# DEPRECATED diagnostic artifact. This isolates only the 0.154.0 sidecar branch;
+# a real canary proved that command_execution uses a sibling branch and remains
+# readable. Do not install or attest this file as a credential boundary.
+set -eu
+
+marker=HAPPI_CODE_MODE_HOST_ISOLATED_V1
+real_host=/usr/local/libexec/happi-agent/codex-code-mode-host-0.154.0
+real_host_sha256=f31e1c5ffbbca7884aff2f0f8795d3da197f4aafb114033a399dfc17a5119031
+expected_codex_home=/var/lib/happi-agent/codex
+worktree_root=/srv/happi-agent/worktrees
+shared_git_dir=/srv/machine-audits/.git
+
+if [ "$#" -eq 1 ] && [ "$1" = "--happi-isolation-check" ]; then
+    printf '%s\n' "$marker"
+    exit 0
+fi
+
+fail() {
+    printf 'happi code-mode boundary: %s\n' "$1" >&2
+    exit 78
+}
+
+[ "${CODEX_HOME-}" = "$expected_codex_home" ] || \
+    fail "unexpected CODEX_HOME"
+[ -x /usr/bin/bwrap ] || fail "bubblewrap is unavailable"
+[ -x "$real_host" ] || fail "co-versioned real tool host is unavailable"
+host_digest=$(/usr/bin/sha256sum "$real_host") || fail "cannot hash real tool host"
+case "$host_digest" in
+    "$real_host_sha256"\ *) ;;
+    *) fail "real tool host hash does not match inspected 0.154.0 artifact" ;;
+esac
+[ -d "$worktree_root" ] || fail "worktree root is unavailable"
+[ -d "$shared_git_dir" ] || fail "shared Git directory is unavailable"
+
+workspace=$(/usr/bin/pwd -P) || fail "cannot resolve current workspace"
+case "$workspace" in
+    "$worktree_root"/*) ;;
+    *) fail "current directory is outside the approved worktree root" ;;
+esac
+[ "$workspace" != "$worktree_root" ] || fail "worktree root itself is not a workspace"
+case "$workspace" in
+    "$expected_codex_home"|"$expected_codex_home"/*)
+        fail "workspace overlaps CODEX_HOME"
+        ;;
+esac
+
+# The client remains outside this namespace and retains its authenticated
+# CODEX_HOME. Only the sidecar and every process it creates enter this minimal
+# mount/PID/network namespace. The extra `sh -c` has no script file descriptor;
+# it closes every inherited descriptor except stdio before execing bwrap. This
+# prevents an accidentally non-CLOEXEC client descriptor from bypassing mounts via
+# /proc/self/fd. The empty tmpfs CODEX_HOME remains usable for helper aliases.
+exec /bin/sh -c '
+    for descriptor_path in /proc/self/fd/*; do
+        descriptor=${descriptor_path##*/}
+        case "$descriptor" in
+            0|1|2) ;;
+            *) eval "exec ${descriptor}>&-" 2>/dev/null || : ;;
+        esac
+    done
+    exec "$@"
+' happi-close-inherited-fds /usr/bin/bwrap \
+    --die-with-parent \
+    --new-session \
+    --unshare-all \
+    --cap-drop ALL \
+    --tmpfs / \
+    --dev /dev \
+    --proc /proc \
+    --tmpfs /tmp \
+    --ro-bind /usr /usr \
+    --ro-bind /etc /etc \
+    --symlink usr/bin /bin \
+    --symlink usr/sbin /sbin \
+    --symlink usr/lib /lib \
+    --tmpfs "$expected_codex_home" \
+    --ro-bind "$shared_git_dir" "$shared_git_dir" \
+    --bind "$workspace" "$workspace" \
+    --chdir "$workspace" \
+    --clearenv \
+    --setenv PATH /usr/local/bin:/usr/bin:/bin \
+    --setenv HOME "$expected_codex_home" \
+    --setenv CODEX_HOME "$expected_codex_home" \
+    --setenv LANG C.UTF-8 \
+    --setenv LC_ALL C.UTF-8 \
+    -- "$real_host" "$@"
