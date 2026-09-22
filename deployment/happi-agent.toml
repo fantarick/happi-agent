@@ -1,0 +1,12 @@
+# Production paths for the systemd template. Install as
+# /etc/happi-agent/config.toml only after reviewing them on the target host.
+state_dir = "/var/lib/happi-agent"
+worktree_root = "/srv/happi-agent/worktrees"
+canonical_repo = "/srv/machine-audits"
+jobs_dir = "/opt/happi-agent/jobs"
+prompts_dir = "/opt/happi-agent/prompts"
+codex_binary = "/opt/codex/0.154.0/bin/codex"
+codex_config = "/var/lib/happi-agent/codex/config.toml"
+lock_file = "/var/lib/happi-agent/happi-agent.lock"
+kill_switch = "/var/lib/happi-agent/KILL_SWITCH"
+credential_boundary_gate = "/var/lib/happi-agent/CANARY_DENIED"

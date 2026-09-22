@@ -81,7 +81,8 @@ class AppConfig:
     canonical_repo: Path
     jobs_dir: Path
     prompts_dir: Path
-    codex_binary: str = "codex"
+    codex_binary: str = "/opt/codex/0.154.0/bin/codex"
+    codex_config: Path = Path("/var/lib/happi-agent/codex/config.toml")
     lock_file: Path | None = None
     kill_switch: Path | None = None
     credential_boundary_gate: Path | None = None
@@ -107,6 +108,9 @@ class CodexExecutionResult:
     exit_code: int | None
     timed_out: bool = False
     protocol_error: str | None = None
+    active_permission_profile: str | None = None
+    turn_status: str | None = None
+    command_executions: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)

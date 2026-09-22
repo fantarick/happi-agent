@@ -19,21 +19,29 @@ service-management commands in v0.1.
 
 Each run is inserted into SQLite as `QUEUED`, acquires a process-safe global lock,
 checks the kill-switch sentinel, creates a detached Git worktree at the configured
-base `HEAD`, runs registered Python collectors, and sends their JSON snapshot to
-`codex exec` over stdin. Codex receives only `workspace-write`, approvals `never`,
-network access disabled for model-generated commands, ephemeral sessions and JSONL
-output. User config and execpolicy rules are ignored; multi-agent, apps, plugins,
-hooks, browser/computer tools, image generation, MCP servers and web search are
-disabled per invocation. Model-generated commands start from an empty environment
-with a fixed `PATH` and `C.UTF-8` locale; Codex prepends its own packaged command
-path when it launches them.
+base `HEAD`, runs registered Python collectors, and sends their JSON snapshot to a
+fresh `codex app-server --stdio` process. The client negotiates the experimental
+0.154.0 API, enumerates and selects the `happi-workspace-only` permission profile,
+checks that no instruction source file was loaded, and only then starts the model
+turn. The profile denies root reads by default, allows the minimal runtime, grants
+write access only to the current worktree, grants read access only to the canonical
+`.git` directory, explicitly denies `CODEX_HOME`, and disables tool network access.
 
-On Happi, the co-located `codex-code-mode-host` name is a root-owned wrapper. The
-Codex client remains outside and can read its ChatGPT credential cache; the sidecar
-and all of its descendants run in an additional bubblewrap mount/PID/network
-namespace that does not contain the real `CODEX_HOME`. The worktree is its only
-host-writable bind mount and the shared Git directory is read-only. See
-`docs/CREDENTIAL_BOUNDARY.md`.
+The complete standalone 0.154.0 bundle and root-owned Codex config are checked by
+path, version, SHA-256, owner and mode. Multi-agent, apps, plugins, hooks,
+browser/computer tools, image generation, MCP servers and web search are disabled.
+Model-generated commands start from an empty environment with a fixed `PATH`,
+`C.UTF-8` locale and `GIT_OPTIONAL_LOCKS=0`. No legacy `--sandbox`,
+`sandboxPolicy`, `sandbox_mode` or `sandbox_workspace_write` setting is used.
+
+On Happi, the co-located `/usr/local/bin/codex-code-mode-host` is currently the old
+root-owned wrapper. A real post-install canary proved that this is not a credential boundary
+for shell tools: Codex 0.154.0 launches `command_execution` through a separate
+native-sandbox branch directly from the credential-bearing client. Scheduling
+therefore remains deprecated and is not consulted by the new executor. A separate
+diagnostic App Server run as `rici` produced `CANARY_DENIED`, establishing the new
+mechanism as a candidate. Scheduling remains blocked until the same canary passes
+under the installed `happi-agent` UID. See `docs/CREDENTIAL_BOUNDARY.md`.
 
 The Codex client itself still needs outbound connectivity to OpenAI as its control
 channel. `network_access=false` applies to commands executed inside the Codex
@@ -58,7 +66,9 @@ Illegal transitions raise a structured `ILLEGAL_TRANSITION` error.
 - Job files cannot supply commands, argv, shell fragments or collector parameters.
   They may only name collector IDs compiled into the Python registry.
 - All orchestrator subprocesses use argv arrays and `shell=False`.
-- Codex always has the sacrificial worktree as both cwd and working root.
+- Codex always has the sacrificial worktree as both cwd and the single dynamic
+  runtime workspace root. The profile entry `:workspace_roots = { "." = "write" }`
+  is resolved against that exact cwd; no parent worktree directory is writable.
 - The canonical repository and shared Git directory are outside every sandbox
   writable root. The worktree `.git` marker is hashed and checked after execution.
 - Codex has no approval path, sudo grant, networked tools, MCP, app/plugin or
@@ -119,12 +129,13 @@ confirm `BLOCKED`, then remove only that sentinel.
 
 ## Residual limits
 
-- Codex CLI's Linux sandbox is part of the trust boundary. v0.1 pins 0.154.0; treat
-  any upgrade as incompatible until the wrapper and real canary are revalidated.
-- The orchestrator and Codex client share an OS uid. The additional sidecar mount
-  namespace removes the model-controlled process tree's view of `CODEX_HOME`; it
-  does not protect against compromise of the trusted Codex client itself or of the
-  deterministic Python control plane.
+- Codex CLI's permission-profile Linux sandbox is part of the trust boundary. v0.1 pins 0.154.0; treat
+  any upgrade as incompatible until its actual tool-execution topology and a new
+  real canary are validated.
+- The orchestrator, Codex client and model-controlled commands share an OS UID.
+  The new permission profile denied the user credential canary in a real agentic
+  diagnostic, but the service-UID deployment has not yet been tested. This open P0
+  prevents unattended operation and keeps the operator gate absent.
 - stdout/stderr capture is in memory in v0.1; a malicious or defective client could
   cause memory pressure before artifacts are saved.
 - Because v0.1 intentionally has no custom execpolicy, it cannot reject a command

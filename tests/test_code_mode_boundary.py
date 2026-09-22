@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 
 
-class CodeModeBoundaryTests(unittest.TestCase):
+class DeprecatedSidecarWrapperTests(unittest.TestCase):
     @unittest.skipUnless(shutil.which("bwrap"), "bubblewrap is required")
-    def test_wrapper_hides_codex_home_and_preserves_nested_userns(self) -> None:
+    def test_wrapper_hides_only_sidecar_codex_home_and_allows_nested_userns(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             codex_home = root / "codex-home"

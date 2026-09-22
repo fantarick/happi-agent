@@ -70,7 +70,7 @@ class RunnerTests(unittest.TestCase):
         workspace = Path(str(record["workspace_path"]))
         self.assertTrue(workspace.is_dir())
         names = {artifact["name"] for artifact in record["artifacts"]}  # type: ignore[index]
-        self.assertIn("codex.stdout.jsonl", names)
+        self.assertIn("app-server.events.jsonl", names)
         self.assertIn("diagnostic-validation.json", names)
 
     def test_validation_failure_quarantines_workspace(self) -> None:
@@ -115,7 +115,16 @@ class RunnerTests(unittest.TestCase):
         names = {artifact["name"] for artifact in record["artifacts"]}  # type: ignore[index]
         self.assertIn("error.json", names)
         self.assertIn("diagnostic-diff.patch", names)
-        self.assertIn("codex.stderr.log", names)
+        self.assertIn("app-server.stderr.log", names)
+
+    def test_executor_security_invariant_is_rechecked(self) -> None:
+        outcome = self.runner(
+            FakeExecutor(active_permission_profile="wrong-profile")
+        ).run("test-job")
+        self.assertEqual(outcome.state, RunState.FAILED)
+        self.assertEqual(outcome.error_code, "CODEX_SECURITY_INVARIANT_FAILED")
+        record = self.record(outcome.run_id)
+        self.assertFalse(Path(str(record["workspace_path"])).exists())
 
 
 if __name__ == "__main__":

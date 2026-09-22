@@ -2,112 +2,215 @@
 
 ## Status and acceptance gate
 
-The observed real result `CANARY_READABLE` is a P0 failure. Unit tests and local
-namespace probes do not close it. The boundary remains **unverified** until the
-post-install real canary on Happi returns `CANARY_DENIED` through
-`SubprocessCodexExecutor`.
+The post-install real canary returned `CANARY_READABLE`. This is a P0 failure.
+The sidecar wrapper is **not** a credential boundary for model-controlled shell
+commands and must not be treated as one.
 
-No real unattended job is authorized before all three conditions hold:
+No real unattended job is authorized. A replacement candidate is now implemented:
+Codex App Server 0.154.0 with the named permission profile
+`happi-workspace-only`. The operator must not create
+`/var/lib/happi-agent/CANARY_DENIED` until the installed implementation is tested
+under the real `happi-agent` UID and its agentic canary returns `CANARY_DENIED`.
+Unit tests, the earlier diagnostic run as `rici`, wrapper attestation and namespace
+smoke tests cannot substitute for that deployment result.
 
-1. the wrapper and the original co-versioned sidecar are installed as root-owned,
-   non-group/world-writable files;
-2. the real canary result file says `CANARY_DENIED` and the raw JSONL proves the
-   requested shell tool was actually invoked;
-3. an operator creates `/var/lib/happi-agent/CANARY_DENIED` with the exact content
-   `CANARY_DENIED\n` only after reviewing that evidence.
+Both systemd and the Python runner still fail closed while the gate is absent. The
+production executor no longer uses or attests the wrapper. The wrapper artifact is
+retained only as evidence of the failed experiment.
 
-Both systemd and the Python runner fail closed when the gate is absent. The executor
-also probes the sidecar wrapper before `codex --version` and again before execution.
+## Empirically observed 0.154.0 topology
 
-## Observed 0.154.0 process boundary
+The topology was sampled on Happi on 2026-09-21 using the installed ARM64 0.154.0
+client and real sidecar. The controlled model command was
+`/usr/bin/bash -c '/usr/bin/sleep 60'`, allowing `/proc` to be inspected while the
+processes were alive. No credential file or canary content was opened.
 
-The installed ARM64 bundle was inspected without opening any credential file:
+The installed artifacts were also checked without reading credentials:
 
-- `/usr/local/bin/codex` reports `codex-cli 0.154.0`;
-- `/usr/local/bin/codex-code-mode-host` exposes `--listen`, including stdio;
-- the client's diagnostic identifies a missing sidecar at the path
-  `codex-code-mode-host` beside the resolved client executable;
-- a standalone `codex sandbox` trace shows the native Linux sandbox invoking
-  bubblewrap and creating helper aliases under `$CODEX_HOME/tmp/arg0`;
-- an outer unprivileged bubblewrap namespace with a private empty `CODEX_HOME`
-  successfully ran an inner `codex sandbox` command. User namespaces therefore
-  remain available; the wrapper does not disable the native sandbox.
+- `/usr/local/bin/codex` reported `codex-cli 0.154.0` and SHA-256
+  `9b7c1c7abdc26fc3c4f47c77656a8e9121def5483dbae830ef1ee561758448a9`;
+- the installed wrapper matched `deployment/codex-code-mode-host` byte for byte;
+- the real sidecar SHA-256 was
+  `f31e1c5ffbbca7884aff2f0f8795d3da197f4aafb114033a399dfc17a5119031`.
 
-The relevant process tree after installation is:
+An instrumented, diagnostic-only copy of the co-located wrapper recorded that it
+was invoked by the exact 0.154.0 client before it entered bubblewrap. The observed
+tree was:
 
 ```text
-happi-agent (trusted deterministic control plane)
-└── codex client (network + real CODEX_HOME, trusted credential holder)
-    └── codex-code-mode-host wrapper (stdio inherited from client)
-        └── bwrap: minimal mount/PID/IPC/network namespace
-            └── real codex-code-mode-host 0.154.0
-                └── native Codex sandbox (nested bwrap)
-                    └── model-requested shell process
+codex client (PID 557732; real CODEX_HOME; host namespaces)
+├── wrapper, then outer bwrap (PID 558012)
+│   └── bwrap namespace init (PID 558020)
+│       └── real codex-code-mode-host 0.154.0 (PID 558021)
+└── codex-linux-sandbox (PID 558028)
+    └── native bwrap (PID 558033)
+        └── sandbox init (PID 558034, namespace PID 1)
+            └── model-controlled command (PID 558035, namespace PID 2)
 ```
 
-The client never enters the extra namespace and can authenticate normally. The
-wrapper inherits stdin/stdout/stderr, so the stdio transport remains connected.
-Before starting bubblewrap it closes every other inherited file descriptor, so an
-accidentally non-`CLOEXEC` credential descriptor cannot bypass the mount boundary
-through `/proc/self/fd`. Only the sidecar and descendants enter the namespace.
+The JSONL independently recorded one `command_execution` with the expected command
+and exit code zero. The wrapper log recorded PID 558012 with PPID 557732. Thus the
+wrapper is traversed for the code-mode sidecar, but the shell path is a separate
+child branch created by the client. The shell is neither a direct nor an indirect
+descendant of the sidecar.
 
-## Filesystem view inside the wrapper
+A second sample kept `/usr/bin/bash` alive rather than allowing it to `exec` the
+final `sleep`. In that run the client was PID 559218, the sidecar was its child PID
+559487, and `codex-linux-sandbox` was a separate child PID 559494. Native bwrap PID
+559500 created sandbox init PID 559501, which launched bash PID 559502. Bash had
+namespace PID 2 and PPID 559501; it was therefore an indirect descendant of the
+client and not a descendant of PID 559487.
 
-The outer namespace starts with an empty tmpfs root and exposes:
+The namespace identifiers made the separation explicit:
 
-- `/usr` and `/etc` read-only, for the static sidecar, normal executables, locale
-  data and the `bwrap` binary;
-- `/dev`, a private `/proc`, and a private tmpfs `/tmp`;
-- an empty tmpfs mounted at `/var/lib/happi-agent/codex`;
-- the one current worktree read-write;
-- `/srv/machine-audits/.git` read-only, so Git inspection can resolve the worktree
-  pointer without granting commit authority.
+| Process | mount namespace | PID namespace | network namespace |
+| --- | --- | --- | --- |
+| client and pre-unshare helpers | `4026531841` | `4026531836` | `4026531840` |
+| real sidecar | `4026532640` | `4026532643` | `4026532645` |
+| model-controlled command | `4026532889` | `4026532891` | `4026532892` |
 
-No `/var`, `/home`, `/run`, canonical working tree or other host path is inherited.
-The private `CODEX_HOME` is writable only inside the ephemeral namespace because
-0.154.0 needs to create helper aliases there. It contains no credential cache. The
-only persistent host-writable bind is the approved worktree.
+The sidecar and command therefore share none of the sampled mount, PID or network
+namespaces. Their user and IPC namespaces were also distinct. PIDs are ephemeral,
+but the parentage, command lines and namespace inode relationships were captured
+during the same live execution.
 
-The wrapper requires the exact production `CODEX_HOME`, requires the current
-directory to resolve below `/srv/happi-agent/worktrees`, rejects overlap with
-`CODEX_HOME`, drops capabilities, creates a private PID namespace and unshares the
-network. The client keeps its own network access to OpenAI; the sidecar has none.
+## Where `workspace-write` is applied
 
-## Threat model
+The client directly launched a helper alias below its real
+`$CODEX_HOME/tmp/arg0`, with a managed permission profile containing:
 
-Protected asset: every path below `/var/lib/happi-agent/codex`, especially cached
-ChatGPT authentication. The canary uses only the non-secret `CANARY_SECRET` decoy.
+- read access to the filesystem root;
+- write access to the selected worktree;
+- read-only handling for the worktree `.git` metadata;
+- restricted network access.
 
-Adversary: model output controlling code-mode tool requests and all descendant
-shell commands, including arbitrary argv, symlink traversal attempts and reads as
-the `happi-agent` UID.
+That helper launched native bubblewrap with `--ro-bind / /`, then rebound the
+worktree read-write and unshared user, PID, IPC and network namespaces. The command
+mount table consequently contained the host root mounted read-only and the
+worktree mounted read-write.
 
-Trusted components: deterministic Python orchestration, the Codex 0.154.0 client,
-the root-owned wrapper and real sidecar, the kernel/user-namespace implementation,
-bubblewrap, systemd policy and operator handling of the final gate.
+This is the `workspace-write` boundary. It protects host files from writes; it is
+not a read allowlist. A file readable by the service UID remains readable through
+the read-only root mount unless it is separately masked in this command namespace.
 
-Out of scope for this minimal boundary: compromise of the Codex client before it
-spawns the wrapper, compromise of root/kernel/bubblewrap, malicious replacement of
-root-owned executables, credentials duplicated through hard links or bind mounts
-outside the declared cache, and unrelated readable secrets intentionally placed in
-the worktree or `/etc`.
+## Cause of `CANARY_READABLE`
 
-## Alternatives considered
+The sidecar wrapper creates an empty mount at
+`/var/lib/happi-agent/codex`, but that mount exists only in the sidecar branch. A
+mount namespace change is inherited by descendants, not by siblings or their later
+descendants. The client creates the native sandbox branch from its own host mount
+namespace, where the real `CODEX_HOME` is visible.
 
-- Unix mode `0700/0600` cannot separate processes sharing one UID; the real canary
-  demonstrated this directly.
-- `workspace-write`, Landlock or the native Codex sandbox alone is too late as a
-  credential boundary because the sidecar exists outside the command sandbox.
-- `ProtectSystem`, read-only mounts and `ReadOnlyPaths` prevent mutation, not reads.
-- Applying `InaccessiblePaths` to the whole systemd unit would also blind the Codex
-  client that must authenticate.
-- A second UID or a credential broker is stronger in principle, but Codex 0.154.0
-  has no documented credential-FD/broker interface. UID switching would add a
-  privileged launcher and ownership/IPC design. It is not the minimum v0.1 change.
-- Wrapping the whole Codex client cannot work: descendants inherit its mount view,
-  so either both client and sidecar see credentials or neither does.
+Native `workspace-write` then copies that host view into the command namespace by
+read-only-binding `/`. Read-only changes mutation rights, not read rights. Because
+the client and model-controlled command run under the same host UID, Unix mode
+`0600` on `CANARY_SECRET` does not separate them. These facts account for the real
+`CANARY_READABLE` result without requiring any read of the decoy contents.
 
-The chosen sidecar-specific mount namespace is the smallest boundary at the actual
-exec seam. A future Codex release must be treated as incompatible until sidecar
-resolution, wrapper attestation, nested sandbox operation and the real canary are
-revalidated.
+## Supported permission-profile boundary candidate
+
+The experimental schema and runtime behavior of the exact standalone Codex CLI
+0.154.0 installed on Happi were tested directly. This release exposes
+`permissionProfile/list`, `permissions` on `thread/start` and `turn/start`,
+`activePermissionProfile`, `instructionSources`, and the filesystem tokens
+`:root`, `:minimal`, `:workspace_roots`, `:tmpdir` and `:slash_tmp`.
+
+The tested profile denies the root by default, exposes only the minimal runtime,
+makes the one current worktree writable, exposes
+`/srv/machine-audits/.git` read-only, explicitly denies
+`/var/lib/happi-agent/codex`, denies both temporary-directory aliases and disables
+tool network access. A non-agentic probe returned:
+
+```text
+TOOLS_OK WRITE_OK DECOY_DENIED
+```
+
+A zero-byte probe against a non-secret decoy in the normal user `CODEX_HOME`
+returned `CANARY_DENIED`. A real agentic App Server turn then emitted a completed
+`commandExecution` with exit code zero and `aggregatedOutput` equal to
+`CANARY_DENIED\n`; the active profile ID was `happi-workspace-only`. The Codex
+client retained its own authentication and network access while bubblewrap used
+the restricted profile and an unshared tool network.
+
+The production implementation starts a fresh stdio App Server per job, negotiates
+`experimentalApi`, enumerates the profile using the worktree as `cwd`, and checks
+the active profile before the first model turn. It passes no `sandbox`,
+`sandboxPolicy`, `sandbox_mode` or `sandbox_workspace_write`. Codex 0.154.0 rejects
+attempts to combine the legacy and profile mechanisms.
+
+The generated 0.154.0 JSON Schema does not expose every experimental field, so the
+runtime was also probed directly without starting a model turn. A top-level
+`runtimeWorkspaceRoots` request was accepted but ignored and the response contained
+an empty list. The implementation therefore does not treat that field as a
+security control. The single writable root comes from
+`permissions.happi-workspace-only.filesystem.":workspace_roots"." = "write"`,
+resolved by Codex against the exact `cwd` supplied to both
+`permissionProfile/list` and `thread/start`. The executor rejects any additional
+runtime root reported by the server.
+
+`thread/start` always returns a legacy compatibility summary named `sandbox` in
+0.154.0 even when a permission profile is active. This is response metadata, not a
+selector sent by Happi Agent. The accepted observed value is exactly
+`{"type":"readOnly","networkAccess":false}` together with the named active
+profile. A `sandboxPolicy` field, a write-capable summary, enabled tool network, or
+a missing/wrong active profile fails closed.
+
+App Server has no `--ignore-rules` flag. For v0.1 the trusted config sets
+`project_doc_max_bytes=0`, and `thread/start` was empirically observed to return an
+empty `instructionSources` list. The executor nevertheless requires that exact
+empty list before sending `turn/start`; any file source or missing field fails
+closed. Built-in model instructions are not file paths and are not reported in
+this list.
+
+This validates the mechanism, not the deployment gate. The bundle under `/opt`,
+the root-owned config bind mount, the service UID and the real
+`/var/lib/happi-agent/codex` path must still be tested together.
+
+## Boundaries that can apply at the real execution seam
+
+Any replacement must constrain the branch beginning at `codex-linux-sandbox` (or
+the eventual command process), not merely `codex-code-mode-host`. Viable classes of
+boundary are:
+
+1. The supported Codex 0.154.0 permission profile now implemented by
+   `AppServerCodexExecutor`. This is the preferred next deployment because it
+   constrains the native command sandbox at the observed execution seam.
+2. A distinct tool-executor UID, reached through a small privileged launcher or a
+   broker, so model-controlled descendants cannot pass DAC checks on the credential
+   cache. The launcher must be tied to the actual native-sandbox branch and must
+   not accept arbitrary commands from unrelated callers.
+3. A credential broker outside the tool security domain. The client may request
+   authentication material, while shell descendants have neither filesystem nor
+   IPC authority to request it. This likely requires Codex support or a reviewed
+   patch; moving the same readable secret into another file is insufficient.
+4. A container or VM dedicated to tool execution, with only the worktree and
+   required read-only runtime files exposed. The credential-bearing client must
+   remain outside it and communicate through a constrained tool protocol. Putting
+   both the client and its credential file inside one container reproduces the
+   same flaw.
+5. A mandatory-access-control transition applied specifically on the tool branch,
+   if the target kernel and policy engine can enforce it for every descendant.
+   This is platform-specific and must be validated against bypasses and the real
+   canary.
+
+Wrapping the whole client while also placing a readable credential file in that
+same namespace does not solve the problem: descendants inherit the client's view.
+A bootstrap scheme that removes the secret after login could work only if it is
+proved that 0.154.0 never needs the credential store again for refresh or writes;
+that property has not been established and should not be assumed.
+
+## Recommendation
+
+Retire the sidecar wrapper as the claimed credential boundary and deploy the
+complete pinned 0.154.0 bundle plus the App Server permission profile. Keep
+scheduling and the operator gate disabled until the service-UID canary passes.
+
+If the installed App Server path cannot return `CANARY_DENIED`, cannot operate with
+the documented minimal readable set, or cannot keep instruction sources empty,
+stop and move to an external boundary: a second tool UID and credential broker, or
+a separately isolated tool container. Do not fall back to `workspace-write` or the
+sidecar wrapper.
+
+Acceptance remains one deterministic condition: after implementation, a new real
+canary through the production executor must execute the requested shell and return
+`CANARY_DENIED`. Until then the P0 is open.

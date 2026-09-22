@@ -22,14 +22,18 @@ controllo dell'orchestratore.
 - Branch base: `main`
 - Baseline `main`: `8350039ae5378c50a4f98d3413b2a056d0653367`
 - Branch di handoff: `agent/implementation-v0.1`
-- Ultimo HEAD committato prima della remediation P0:
-  `0064654` (`fix: diagnose incomplete Codex tool host bundle`).
-- La remediation del risultato reale `CANARY_READABLE` è nel working tree per
-  revisione operatore. Codex non ha autorità di commit, push o modifica PR.
+- HEAD verificato prima di questa diagnosi:
+  `3e0ed4d814a6ab354b4af69c60ee454b73e60b52`.
+- La canary reale post-installazione ha restituito `CANARY_READABLE`. La diagnosi
+  nel working tree documenta la topologia reale e il fallimento del wrapper. Una
+  successiva canary App Server con permission profile, eseguita come `rici`, ha
+  restituito `CANARY_DENIED`; il meccanismo è ora implementato come boundary
+  candidato. Il P0 resta aperto fino alla canary sotto l'UID `happi-agent`. Codex
+  non ha autorità di commit, push o modifica PR.
 - Remote: `origin https://github.com/fantarick/happi-agent.git`
 
 Il working tree, non la Draft PR, è al momento la sorgente autoritativa della
-remediation. Dopo revisione, l'operatore può verificarne il commit e l'eventuale
+diagnosi. Dopo revisione, l'operatore può verificarne l'eventuale commit e
 pubblicazione con:
 
 ```bash
@@ -45,6 +49,9 @@ git ls-remote origin refs/heads/agent/implementation-v0.1
 ├── README.md
 ├── config.example.toml
 ├── deployment/codex-code-mode-host
+├── deployment/codex-config.toml
+├── deployment/codex-0.154.0-aarch64.sha256
+├── deployment/happi-agent.toml
 ├── docs/CREDENTIAL_BOUNDARY.md
 ├── jobs/machine-audit-happi.yaml
 ├── prompts/machine-audit-happi.md
@@ -83,9 +90,10 @@ git ls-remote origin refs/heads/agent/implementation-v0.1
   risolta.
 - `state.py`: mantiene run, eventi, artifact e transizioni in SQLite.
 - `workspace.py`: crea e rimuove worktree Git detached sotto una root separata.
-- `codex.py`: invoca Codex CLI con argv strutturati, JSONL, policy esplicite e timeout
-  dell'intero process group; rifiuta release diverse da 0.154.0 e sidecar senza
-  attestazione del wrapper.
+- `codex.py`: avvia un App Server stdio nuovo per ogni job, implementa il protocollo
+  JSON-RPC, verifica bundle/config/versione, enumera e seleziona il permission
+  profile, rifiuta instruction source file e termina l'intero process group su
+  timeout. Il vecchio wrapper non è più un controllo del runner.
 - `validator.py`: valuta deterministicamente il contenuto del worktree e produce un
   `ValidationResult` strutturato.
 - `security.py`: contiene hash SHA-256, kill switch, lock globale e controlli sui
@@ -135,8 +143,9 @@ database e gli artifact sono creati con permessi restrittivi (`0600` per i file,
 
 Per ogni run viene creato un nuovo worktree detached sotto una directory identificata
 dal run ID. Il repository canonico e la Git common directory devono essere esterni
-alla root dei worktree. Codex riceve il worktree sia come `cwd` del processo sia come
-working root tramite `-C`.
+alla root dei worktree. App Server riceve il worktree come `cwd`; il profilo risolve
+la regola dinamica `:workspace_roots = { "." = "write" }` contro quel path esatto.
+La directory padre non è una root scrivibile.
 
 Il marker `.git` del worktree viene acquisito e sottoposto a SHA-256 prima della run,
 reso read-only e verificato dal validator. Anche `HEAD` deve rimanere uguale al base
@@ -145,31 +154,29 @@ sandbox Codex.
 
 ## Configurazione Codex executor
 
-L'executor usa `subprocess.Popen` con argv e `shell=False`. Il prompt è passato su
-stdin. La configurazione per-run comprende:
+L'executor usa `subprocess.Popen` con argv e `shell=False`. Avvia
+`codex app-server --stdio --strict-config` dal percorso assoluto verificato, invia
+`initialize` con `experimentalApi=true`, quindi `initialized`,
+`permissionProfile/list`, `thread/start` e `turn/start`. Richiede esplicitamente
+`happi-workspace-only`, `approvalPolicy=never` e una sessione ephemeral. Non invia
+alcun selettore legacy sandbox. Il probe diretto della 0.154.0 ha mostrato che un
+`runtimeWorkspaceRoots` top-level viene ignorato; l'implementazione non lo usa come
+controllo.
 
-- `codex exec`;
-- `--ignore-user-config` e `--ignore-rules`;
-- `--strict-config`;
-- `--sandbox workspace-write`;
-- `approval_policy="never"`;
-- `sandbox_workspace_write.network_access=false`;
-- writable roots aggiuntive vuote;
-- esclusione di `/tmp` e `$TMPDIR` dalle writable roots;
-- sessione `--ephemeral`;
-- output `--json` JSONL;
-- web search disabilitata;
-- MCP servers e app vuoti;
-- multi-agent, app, plugin, hook, browser, computer use e image generation
-  disabilitati;
-- ambiente dei comandi Codex con baseline vuota, `PATH` deterministico e locale
-  esplicito. Codex 0.154.0 antepone il proprio command path confezionato;
+Il profilo nega `:root`, permette `:minimal` in lettura, nega `/tmp`, rende
+scrivibile solo il worktree, espone `/srv/machine-audits/.git` in lettura, nega
+`/var/lib/happi-agent/codex` e disabilita la rete tool. Il file root-owned è
+duplicato da override CLI ad alta precedenza. Web search, MCP, app, plugin, hook,
+multi-agent, browser, computer use e image generation sono disabilitati.
 
-stdout JSONL, stderr, ultimo messaggio, exit code, versione e risultato di protocollo
-sono archiviati. Il parser richiede un evento `turn.completed` e un messaggio finale;
-inoltre converte in errore di protocollo la firma nota di un code-mode tool host
-mancante, anche se Codex termina con exit code zero. Il timeout invia prima SIGTERM
-e poi SIGKILL all'intero process group.
+Prima del modello l'executor richiede `instructionSources=[]`, profilo attivo
+esatto, cwd esatta, multi-agent non proattivo, summary sandbox read-only/rete off e
+nessun runtime root aggiuntivo. Il campo response `sandbox` è metadata legacy
+obbligatorio della 0.154.0, non un selettore inviato dal client; `sandboxPolicy`
+resta vietato. Archivia il raw event log,
+stderr, ultimo messaggio, profilo, stato del turno e tutti i
+`commandExecution`. Il timeout tenta `turn/interrupt`, quindi SIGTERM e SIGKILL
+all'intero process group.
 
 ## Collector implementati
 
@@ -234,28 +241,29 @@ PYTHONPATH=src python3 -m unittest discover -s tests -v
 Risultato osservato il 21 settembre 2026:
 
 ```text
-Ran 29 tests in 2.651s
+Ran 59 tests
 OK
 ```
 
-- Passati: 29
+- Passati: 59
 - Falliti: 0
 - Skipped: 0
 
 La suite copre parsing configurazione, collector registry, transizioni, lock tra
-processi, run bloccata dal lock, kill switch, timeout e process group, percorsi
-proibiti, massimo file, massimo diff, symlink, binari inattesi, quarantine, cleanup
-success, retention failure, policy di autenticazione ChatGPT e configurazione
-fail-closed dell'executor. La suite verifica anche gate operatore, attestazione del
-wrapper, occultamento della canary e disponibilità di user namespace annidati. I
-test Codex usano un fake executor o un eseguibile locale fittizio e non contattano
-OpenAI.
+processi, gate, timeout e process group, validazione e retention. I test App Server
+coprono handshake e `experimentalApi`, enumerazione/selezione del profilo,
+instruction source, divieto del legacy sandbox, eventi malformati/errore,
+`commandExecution`, final message, completamento, workspace root dinamico, rete
+tool disabilitata, deny del `CODEX_HOME`, Git dir read-only, versione e inventario
+del bundle, hash e parsing canary. Il wrapper resta coperto solo come artefatto
+diagnostico deprecato; tali test non lo qualificano come boundary. Nessun test unit
+contatta OpenAI o richiede autenticazione.
 
 ## Funzionalità non ancora testate realmente
 
-- Una run completa con Codex CLI autenticato e servizi OpenAI reali.
-- La canary reale post-installazione su Happi: il gate resta chiuso finché non
-  restituisce `CANARY_DENIED`.
+- Una run unattended completa (vietata finché il P0 resta aperto).
+- Una nuova canary reale dopo una futura remediation: il gate resta chiuso finché
+  non restituisce `CANARY_DENIED`.
 - L'esecuzione unattended completa su Raspberry Pi 5 target con tutti i collector.
 - La verifica empirica dell'assenza di egress dai comandi nel sandbox Codex sulla
   macchina target.
@@ -264,9 +272,35 @@ OpenAI.
 - Il recupero operativo manuale di worktree quarantinati in produzione.
 - Compatibilità con future versioni Codex CLI differenti da quella ispezionata
   durante lo sviluppo.
-- Completezza del bundle Codex nel deployment: la CLI standalone 0.154.0 richiede
-  `codex-code-mode-host` co-versionato accanto al binario `codex`; il solo binario
-  principale non è sufficiente per i tool di `codex exec`.
+- Installazione manuale del bundle completo verificato sotto `/opt/codex/0.154.0`
+  e del bind mount read-only della configurazione. Il runner ne verifica tutti i
+  payload, non soltanto `codex` e `codex-code-mode-host`.
+
+## Diagnosi reale della credential canary
+
+La canary post-installazione ha eseguito realmente il comando shell e ha prodotto
+`CANARY_READABLE`. Una successiva prova controllata su Happi, con il client ARM64
+0.154.0 esatto, il sidecar reale e un wrapper diagnostico interposto, ha osservato
+due rami fratelli creati dal client:
+
+```text
+codex
+├── wrapper -> bwrap -> real codex-code-mode-host
+└── codex-linux-sandbox -> bwrap -> shell model-controlled
+```
+
+Il sidecar e la shell avevano mount, PID e network namespace diversi. Il bubblewrap
+nativo del ramo shell usava `--ro-bind / /`, rendendo il root host non scrivibile ma
+ancora leggibile. L'empty `CODEX_HOME` creato dal wrapper del sidecar non è quindi
+ereditato dalla shell. La topologia, gli inode dei namespace e la causa completa
+sono registrati in `docs/CREDENTIAL_BOUNDARY.md`.
+
+La successiva diagnosi ha verificato sulla stessa 0.154.0 i permission profile App
+Server. Il probe non agentico ha prodotto `TOOLS_OK WRITE_OK DECOY_DENIED`; il
+probe zero-byte sul `CODEX_HOME` di `rici` e la canary agentica hanno prodotto
+`CANARY_DENIED`. L'evento App Server provava una `commandExecution` completata con
+exit code zero e profilo attivo corretto. La canary di produzione sotto
+`happi-agent` non è stata eseguita in questa fase.
 
 ## Limitazioni note e rischi di sicurezza residui
 
@@ -276,6 +310,10 @@ OpenAI.
   Il deployment previsto richiede un utente dedicato non privilegiato e
   `NoNewPrivileges`.
 - Il sandbox Linux di Codex rimane parte del trust boundary.
+- Il sidecar wrapper installato non protegge le credenziali dai comandi shell e non
+  è più usato come boundary. Il permission profile è il boundary candidato, ma
+  nessun job reale è autorizzato finché la canary installata sotto `happi-agent`
+  non restituisce `CANARY_DENIED` e l'operatore non crea il gate.
 - La v0.1 non implementa custom execpolicy. Non intercetta un comando in base al solo
   argv `git commit`; la common Git directory è però esterna alle writable roots e
   alterazioni di `.git`, `HEAD` o repository annidati vengono rifiutate/quarantinate.
@@ -297,7 +335,7 @@ valido. Non installare l'unità systemd per la prima esecuzione.
 
 ```bash
 cd /home/rici/Coding/OpenAI-Codex/happi-agent
-codex --version
+/opt/codex/0.154.0/bin/codex --version
 test ! -e .local/state/KILL_SWITCH
 
 HAPPI_AGENT_CONFIG="$PWD/config.example.toml" PYTHONPATH="$PWD/src" \
@@ -313,15 +351,9 @@ HAPPI_AGENT_CONFIG="$PWD/config.example.toml" PYTHONPATH="$PWD/src" \
 La dry-run esegue realmente Codex ma non effettua commit, push, PR o merge. Prima di
 usarla occorre valutare la sensibilità dello snapshot che sarà trasmesso a OpenAI.
 
-## Git status finale
+## Stato di consegna
 
-Al termine dell'handoff, dopo il push del commit documentale, lo stato atteso e da
-verificare è:
-
-```text
-## agent/implementation-v0.1...origin/agent/implementation-v0.1
-nothing to commit, working tree clean
-```
-
-Il branch non deve essere fuso da questa procedura: rimane in attesa di audit
-indipendente tramite Draft Pull Request verso `main`.
+Questa fase lascia intenzionalmente modifiche non committate sul branch
+`agent/implementation-v0.1`. Non esegue commit, push, merge né modifica `main`.
+L'operatore deve revisionare il diff e decidere separatamente come conservarlo o
+pubblicarlo.

@@ -1,5 +1,7 @@
 #!/bin/sh
-# Isolation boundary for the Codex 0.154.0 code-mode sidecar on Happi.
+# DEPRECATED diagnostic artifact. This isolates only the 0.154.0 sidecar branch;
+# a real canary proved that command_execution uses a sibling branch and remains
+# readable. Do not install or attest this file as a credential boundary.
 set -eu
 
 marker=HAPPI_CODE_MODE_HOST_ISOLATED_V1

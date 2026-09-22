@@ -56,6 +56,7 @@ def load_app_config(path: Path) -> AppConfig:
             "jobs_dir",
             "prompts_dir",
             "codex_binary",
+            "codex_config",
             "lock_file",
             "kill_switch",
             "credential_boundary_gate",
@@ -75,11 +76,16 @@ def load_app_config(path: Path) -> AppConfig:
         raise ConfigError(
             "MISSING_CONFIG_KEY", f"missing application key(s): {', '.join(missing)}"
         )
-    binary = raw.get("codex_binary", "codex")
-    if not isinstance(binary, str) or not binary or "/" in binary:
+    binary = raw.get("codex_binary", "/opt/codex/0.154.0/bin/codex")
+    if not isinstance(binary, str) or not binary or not Path(binary).is_absolute():
         raise ConfigError(
-            "INVALID_CODEX_BINARY", "codex_binary must be a bare executable name"
+            "INVALID_CODEX_BINARY", "codex_binary must be an absolute path"
         )
+    codex_config = _resolve_path(
+        raw.get("codex_config", "/var/lib/happi-agent/codex/config.toml"),
+        base,
+        "codex_config",
+    )
     lock_file = (
         _resolve_path(raw["lock_file"], base, "lock_file")
         if "lock_file" in raw
@@ -107,7 +113,8 @@ def load_app_config(path: Path) -> AppConfig:
         ),
         jobs_dir=_resolve_path(raw["jobs_dir"], base, "jobs_dir"),
         prompts_dir=_resolve_path(raw["prompts_dir"], base, "prompts_dir"),
-        codex_binary=binary,
+        codex_binary=str(Path(binary)),
+        codex_config=codex_config,
         lock_file=lock_file,
         kill_switch=kill_switch,
         credential_boundary_gate=credential_boundary_gate,
@@ -355,6 +362,7 @@ def resolved_config_hash(app: AppConfig, job: JobConfig) -> str:
             "jobs_dir": str(app.jobs_dir),
             "prompts_dir": str(app.prompts_dir),
             "codex_binary": app.codex_binary,
+            "codex_config": str(app.codex_config),
             "lock_file": str(app.effective_lock_file),
             "kill_switch": str(app.effective_kill_switch),
             "credential_boundary_gate": str(

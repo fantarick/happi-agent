@@ -4,7 +4,8 @@ worktree_root = ".local/worktrees"
 canonical_repo = "../../machine-audits"
 jobs_dir = "jobs"
 prompts_dir = "prompts"
-codex_binary = "codex"
+codex_binary = "/opt/codex/0.154.0/bin/codex"
+codex_config = "/var/lib/happi-agent/codex/config.toml"
 
 # Mandatory operator attestation. Create this exact file only after the real
 # credential-read canary has produced CANARY_DENIED and its artifacts were reviewed.

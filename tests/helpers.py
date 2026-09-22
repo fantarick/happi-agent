@@ -40,11 +40,15 @@ class FakeExecutor:
         exit_code: int = 0,
         timed_out: bool = False,
         protocol_error: str | None = None,
+        active_permission_profile: str | None = "happi-workspace-only",
+        turn_status: str | None = "completed",
     ):
         self.action = action
         self.exit_code = exit_code
         self.timed_out = timed_out
         self.protocol_error = protocol_error
+        self.active_permission_profile = active_permission_profile
+        self.turn_status = turn_status
         self.version_called = False
         self.execute_called = False
 
@@ -69,6 +73,8 @@ class FakeExecutor:
             exit_code=self.exit_code,
             timed_out=self.timed_out,
             protocol_error=self.protocol_error,
+            active_permission_profile=self.active_permission_profile,
+            turn_status=self.turn_status,
         )
 
 

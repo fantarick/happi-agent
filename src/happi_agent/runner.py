@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from happi_agent.codex import CodexExecutor, SubprocessCodexExecutor
+from happi_agent.codex import AppServerCodexExecutor, CodexExecutor, PERMISSION_PROFILE
 from happi_agent.collectors.base import CollectorRegistry, default_registry
 from happi_agent.config import load_job_config, resolved_config_hash
 from happi_agent.models import (
@@ -85,7 +85,11 @@ class Runner:
     ):
         self.app = app
         self.state = state or StateStore(app.state_dir / "state.sqlite3")
-        self.executor = executor or SubprocessCodexExecutor(app.codex_binary)
+        self.executor = executor or AppServerCodexExecutor(
+            app.codex_binary,
+            app.codex_config,
+            canonical_git_dir=app.canonical_repo / ".git",
+        )
         self.collectors = collectors or default_registry()
         self.validator = validator or Validator()
         self.workspaces = WorkspaceManager(app.canonical_repo, app.worktree_root)
@@ -197,20 +201,34 @@ class Runner:
                 )
                 return RunOutcome(run_id, RunState.TIMEOUT, "CODEX_TIMEOUT")
 
-            if execution.exit_code != 0:
-                self._save_diagnostic_validation(artifacts, workspace, job.validation)
-                error = "CODEX_EXIT_NONZERO"
-                detail = f"Codex exited with code {execution.exit_code}"
-                self._fail_and_cleanup(run_id, artifacts, workspace, error, detail)
-                workspace = None
-                return RunOutcome(run_id, RunState.FAILED, error)
-
             if execution.protocol_error:
                 self._save_diagnostic_validation(artifacts, workspace, job.validation)
                 error = "CODEX_PROTOCOL_ERROR"
                 self._fail_and_cleanup(
                     run_id, artifacts, workspace, error, execution.protocol_error
                 )
+                workspace = None
+                return RunOutcome(run_id, RunState.FAILED, error)
+
+            if (
+                execution.active_permission_profile != PERMISSION_PROFILE
+                or execution.turn_status != "completed"
+            ):
+                self._save_diagnostic_validation(artifacts, workspace, job.validation)
+                error = "CODEX_SECURITY_INVARIANT_FAILED"
+                detail = (
+                    "executor returned without the required active permission "
+                    "profile and completed turn"
+                )
+                self._fail_and_cleanup(run_id, artifacts, workspace, error, detail)
+                workspace = None
+                return RunOutcome(run_id, RunState.FAILED, error)
+
+            if execution.exit_code != 0:
+                self._save_diagnostic_validation(artifacts, workspace, job.validation)
+                error = "CODEX_EXIT_NONZERO"
+                detail = f"Codex exited with code {execution.exit_code}"
+                self._fail_and_cleanup(run_id, artifacts, workspace, error, detail)
                 workspace = None
                 return RunOutcome(run_id, RunState.FAILED, error)
 
@@ -308,8 +326,8 @@ class Runner:
     def _save_codex_artifacts(
         artifacts: ArtifactWriter, execution: CodexExecutionResult
     ) -> None:
-        artifacts.write_text("codex.stdout.jsonl", execution.stdout_jsonl)
-        artifacts.write_text("codex.stderr.log", execution.stderr)
+        artifacts.write_text("app-server.events.jsonl", execution.stdout_jsonl)
+        artifacts.write_text("app-server.stderr.log", execution.stderr)
         artifacts.write_text("codex.final.txt", execution.final_message)
         artifacts.write_json(
             "codex-result.json",
@@ -317,6 +335,9 @@ class Runner:
                 "exit_code": execution.exit_code,
                 "timed_out": execution.timed_out,
                 "protocol_error": execution.protocol_error,
+                "active_permission_profile": execution.active_permission_profile,
+                "turn_status": execution.turn_status,
+                "command_executions": list(execution.command_executions),
             },
         )
 

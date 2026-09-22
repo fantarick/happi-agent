@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from happi_agent.codex import SubprocessCodexExecutor
+from happi_agent.codex import AppServerCodexExecutor
 from happi_agent.security import codex_process_environment
 
 
@@ -31,7 +31,10 @@ class AuthenticationPolicyTests(unittest.TestCase):
         self.assertNotIn("CODEX_ACCESS_TOKEN", environment)
 
     def test_codex_command_forces_chatgpt_login(self) -> None:
-        command = SubprocessCodexExecutor().command(Path("/tmp/worktree"))
+        command = AppServerCodexExecutor(
+            "/opt/codex/0.154.0/bin/codex",
+            Path("/var/lib/happi-agent/codex/config.toml"),
+        ).command()
         self.assertIn('forced_login_method="chatgpt"', command)
         self.assertNotIn("--with-api-key", command)
         self.assertNotIn("--with-access-token", command)
