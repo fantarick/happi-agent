@@ -1,0 +1,15 @@
+{
+  "protocol_version": "agentic-dev-playbook/v0.2",
+  "type": "architect_review",
+  "verdict": "APPROVE",
+  "acceptance_criteria": [
+    {
+      "id": "AC1",
+      "result": "PASS",
+      "evidence": "Reference deterministic evidence."
+    }
+  ],
+  "blocking_findings": [],
+  "non_blocking_findings": [],
+  "residual_uncertainty": []
+}
