@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "happi-agent"
-version = "0.1.0"
-description = "Conservative local orchestrator for unattended Codex CLI jobs"
+version = "0.2.0.dev0"
+description = "Deterministic reference orchestrator for the Agentic Development Playbook"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -19,4 +19,3 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
