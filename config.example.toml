@@ -1,12 +1,10 @@
-# Development/dry-run configuration. Paths are resolved relative to this file.
+# Development configuration for happi-agent v0.2.
+# Paths are resolved relative to this file.
 state_dir = ".local/state"
 worktree_root = ".local/worktrees"
 canonical_repo = "../../machine-audits"
-jobs_dir = "jobs"
-prompts_dir = "prompts"
-codex_binary = "codex"
+policies_dir = "policies"
 
 # Optional overrides; defaults live under state_dir.
 # lock_file = ".local/state/happi-agent.lock"
 # kill_switch = ".local/state/KILL_SWITCH"
-
