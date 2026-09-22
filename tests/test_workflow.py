@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from happi_agent.config import load_job_config
+from happi_agent.config import load_validation_policy
 from happi_agent.protocol import WorkflowState
 from happi_agent.workflow import WorkflowController, WorkflowError
 from tests.helpers import ProjectFixture
@@ -127,7 +127,7 @@ class WorkflowControllerTests(unittest.TestCase):
         self.assertEqual(state.state, WorkflowState.VERIFYING)
         self.assertEqual(state.iteration, 1)
 
-        policy = load_job_config("test-job", self.fixture.app).validation
+        policy = load_validation_policy("test-policy", self.fixture.app)
         state, validation = self.controller.verify(workflow_id, policy)
         self.assertTrue(validation.ok)
         self.assertEqual(state.state, WorkflowState.REVIEW_REQUIRED)
@@ -159,7 +159,7 @@ class WorkflowControllerTests(unittest.TestCase):
         self.controller.ingest_engineer_handoff(
             workflow_id, self.engineer_handoff(workflow_id, 1)
         )
-        policy = load_job_config("test-job", self.fixture.app).validation
+        policy = load_validation_policy("test-policy", self.fixture.app)
         state, validation = self.controller.verify(workflow_id, policy)
         self.assertTrue(validation.ok)
         self.assertEqual(state.state, WorkflowState.REVIEW_REQUIRED)
