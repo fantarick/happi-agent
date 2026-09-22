@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 
+# Retained only for read-only inspection of historical v0.1 run databases.
 class RunState(str, Enum):
     QUEUED = "QUEUED"
     PREFLIGHT = "PREFLIGHT"
@@ -64,24 +65,11 @@ class ValidationPolicy:
 
 
 @dataclass(frozen=True)
-class JobConfig:
-    version: int
-    job_id: str
-    prompt_path: Path
-    collectors: tuple[str, ...]
-    timeout_seconds: int
-    validation: ValidationPolicy
-    source_path: Path
-
-
-@dataclass(frozen=True)
 class AppConfig:
     state_dir: Path
     worktree_root: Path
     canonical_repo: Path
-    jobs_dir: Path
-    prompts_dir: Path
-    codex_binary: str = "codex"
+    policies_dir: Path
     lock_file: Path | None = None
     kill_switch: Path | None = None
 
@@ -92,16 +80,6 @@ class AppConfig:
     @property
     def effective_kill_switch(self) -> Path:
         return self.kill_switch or self.state_dir / "KILL_SWITCH"
-
-
-@dataclass(frozen=True)
-class CodexExecutionResult:
-    stdout_jsonl: str
-    stderr: str
-    final_message: str
-    exit_code: int | None
-    timed_out: bool = False
-    protocol_error: str | None = None
 
 
 @dataclass(frozen=True)
@@ -128,11 +106,3 @@ class ValidationResult:
             "changed_files": list(self.changed_files),
             "diff_bytes": self.diff_bytes,
         }
-
-
-@dataclass(frozen=True)
-class RunOutcome:
-    run_id: str
-    state: RunState
-    error_code: str | None = None
-
