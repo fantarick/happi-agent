@@ -4,25 +4,27 @@
 
 `agentic-dev-playbook` is the normative methodology and protocol.
 
-`happi-agent` is the first executable reference implementation of the deterministic orchestration layer.
+`happi-agent` is the first executable reference implementation of the
+deterministic orchestration layer.
 
-The repositories remain physically separate so the playbook can stay tool-agnostic and Happi can evolve as a Python/Linux/GitHub implementation. They are version-linked rather than merged into a monorepo.
+The repositories remain physically separate so the playbook can stay
+tool-agnostic and Happi can evolve as a Python/Linux/Git implementation. They are
+version-linked rather than merged into a monorepo.
 
 ## v0.2 boundary
 
-Happi v0.2 owns:
+Happi owns:
 
-- workflow state;
-- allowed transitions;
+- workflow state and legal transitions;
+- SQLite events and artifact metadata;
 - worktree lifecycle;
-- durable evidence;
-- deterministic verification;
-- handoff validation;
+- deterministic validation;
+- contract and handoff validation;
 - iteration limits;
-- block/escalate/quarantine behavior;
+- block/escalate routing;
 - next-action reporting.
 
-Happi v0.2 does not own:
+Happi does not own:
 
 - ChatGPT/Codex authentication;
 - unattended model invocation;
@@ -30,49 +32,68 @@ Happi v0.2 does not own:
 - independent review reasoning;
 - merge authority.
 
-## Intended loop
+## Implemented control flow
 
 ```text
-Human intent
-   ↓
-Happi: state + contract gate
-   ↓
+intent
+  ↓
+Happi persists workflow
+  ↓
+discovery evidence
+  ↓
+approved feature contract
+  ↓
+Happi creates detached worktree
+  ↓
 ENGINEER_REQUIRED
-   ↓
-Human invokes repository engineer
-   ↓
-structured ENGINEER_HANDOFF
-   ↓
-Happi: deterministic verification
-   ↓
+  ↓
+human invokes repository engineer
+  ↓
+ENGINEER_HANDOFF.json
+  ↓
+Happi validates + increments iteration
+  ↓
+deterministic Validator
+  ↓
 REVIEW_REQUIRED
-   ↓
-Independent reviewer
-   ↓
-structured ARCHITECT_REVIEW
-   ↓
+  ↓
+ARCHITECT_REVIEW.json
+  ↓
 Happi
-   ├─ REQUEST_CHANGES -> ENGINEER_REQUIRED (within circuit breaker)
-   ├─ ESCALATE        -> ESCALATED
-   └─ APPROVE         -> HUMAN_MERGE_REQUIRED
+  ├─ APPROVE         -> HUMAN_MERGE_REQUIRED
+  ├─ REQUEST_CHANGES -> ENGINEER_REQUIRED or ESCALATED at circuit breaker
+  └─ ESCALATE        -> ESCALATED
 ```
 
 ## Migration from v0.1
 
-The branch starts from the last pre-auth-hardening implementation baseline `a97843254d4b83e1941b7d788aa602473e36f306`.
+The redesign branch started from
+`a97843254d4b83e1941b7d788aa602473e36f306`.
 
-Useful v0.1 components should be retained:
+Retained:
 
-- SQLite audit trail;
-- process-safe lock;
+- Git worktree manager;
+- validator;
+- SHA-256 artifact evidence;
+- SQLite audit concepts;
+- process-safe global lock;
 - kill switch;
-- worktree manager;
-- validation policy;
-- artifact hashing;
-- quarantine semantics;
-- CI and tests.
+- historical run-store readability;
+- CI.
 
-The direct Codex execution path becomes legacy and is removed or isolated in a subsequent bounded change. Credential-boundary research remains documentation/history, not a production prerequisite for v0.2.
+Removed from the v0.2 branch:
+
+- direct Codex executor;
+- unattended Runner;
+- daemon-owned model prompt/job format;
+- `codex_binary` configuration;
+- unattended systemd model-job unit.
+
+Validation configuration is now model-independent and lives in
+`policies/*.json`.
+
+Credential-boundary research remains historical evidence in Git and Draft PR #1;
+it is no longer a production prerequisite.
 
 ## Version linkage
 
@@ -83,4 +104,5 @@ Implements: agentic-dev-playbook/v0.2
 Playbook reference: protocol/v0.2 (commit pinned at release time)
 ```
 
-Do not vendor or submodule the playbook merely to create coupling. Protocol compatibility must be explicit and testable.
+Do not vendor or submodule the playbook merely to create coupling. Protocol
+compatibility must be explicit and testable.
