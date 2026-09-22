@@ -159,6 +159,23 @@ class HandoffTests(unittest.TestCase):
             )
         self.assertEqual(caught.exception.code, "INVALID_REVIEW")
 
+    def test_architect_review_rejects_duplicate_criteria(self) -> None:
+        with self.assertRaises(ProtocolError):
+            parse_architect_review(
+                {
+                    "protocol_version": PROTOCOL_VERSION,
+                    "type": "architect_review",
+                    "verdict": "APPROVE",
+                    "acceptance_criteria": [
+                        {"id": "AC1", "result": "PASS"},
+                        {"id": "AC1", "result": "PASS"},
+                    ],
+                    "blocking_findings": [],
+                    "non_blocking_findings": [],
+                    "residual_uncertainty": [],
+                }
+            )
+
     def test_architect_review_rejects_unknown_verdict(self) -> None:
         with self.assertRaises(ProtocolError):
             parse_architect_review(
