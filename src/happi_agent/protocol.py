@@ -434,6 +434,7 @@ def parse_architect_review(value: object) -> ArchitectReview:
     if not isinstance(criteria, list):
         raise ProtocolError("INVALID_HANDOFF", "acceptance_criteria must be an array")
     acceptance_results: list[tuple[str, str]] = []
+    seen_criteria: set[str] = set()
     for criterion in criteria:
         item = _strict_object(
             criterion,
@@ -441,8 +442,15 @@ def parse_architect_review(value: object) -> ArchitectReview:
             optional=frozenset({"evidence"}),
             label="acceptance criterion",
         )
-        if not isinstance(item["id"], str) or not item["id"]:
-            raise ProtocolError("INVALID_HANDOFF", "criterion id is invalid")
+        if (
+            not isinstance(item["id"], str)
+            or not item["id"]
+            or item["id"] in seen_criteria
+        ):
+            raise ProtocolError(
+                "INVALID_HANDOFF", "criterion ids must be non-empty and unique"
+            )
+        seen_criteria.add(item["id"])
         if item["result"] not in {"PASS", "FAIL", "UNKNOWN"}:
             raise ProtocolError("INVALID_HANDOFF", "criterion result is invalid")
         if "evidence" in item and not isinstance(item["evidence"], str):
