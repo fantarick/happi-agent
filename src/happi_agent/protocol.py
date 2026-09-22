@@ -182,6 +182,127 @@ def _string_list(value: object, label: str) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+class FeatureContract:
+    status: str
+    objective: str
+    acceptance_criteria: tuple[tuple[str, str], ...]
+    invariants: tuple[str, ...]
+    human_decisions_reserved: tuple[str, ...]
+    escalation_conditions: tuple[str, ...]
+
+
+def parse_feature_contract(value: object) -> FeatureContract:
+    data = _strict_object(
+        value,
+        required=frozenset(
+            {
+                "protocol_version",
+                "type",
+                "status",
+                "objective",
+                "non_goals",
+                "acceptance_criteria",
+                "invariants",
+                "verification_plan",
+                "human_decisions_reserved",
+                "escalation_conditions",
+            }
+        ),
+        optional=frozenset({"why"}),
+        label="feature contract",
+    )
+    if data["protocol_version"] != PROTOCOL_VERSION:
+        raise ProtocolError("UNSUPPORTED_PROTOCOL", "unsupported protocol_version")
+    if data["type"] != "feature_contract":
+        raise ProtocolError("INVALID_CONTRACT", "wrong contract type")
+    if data["status"] not in {
+        "DRAFT",
+        "APPROVED",
+        "IMPLEMENTING",
+        "REVIEW",
+        "COMPLETE",
+        "SUPERSEDED",
+    }:
+        raise ProtocolError("INVALID_CONTRACT", "unsupported contract status")
+    if not isinstance(data["objective"], str) or not data["objective"].strip():
+        raise ProtocolError("INVALID_CONTRACT", "objective must be non-empty")
+
+    _string_list(data["non_goals"], "non_goals")
+    invariants = _string_list(data["invariants"], "invariants")
+    human_decisions = _string_list(
+        data["human_decisions_reserved"], "human_decisions_reserved"
+    )
+    escalation = _string_list(
+        data["escalation_conditions"], "escalation_conditions"
+    )
+
+    raw_criteria = data["acceptance_criteria"]
+    if not isinstance(raw_criteria, list) or not raw_criteria:
+        raise ProtocolError(
+            "INVALID_CONTRACT", "acceptance_criteria must be a non-empty array"
+        )
+    criteria: list[tuple[str, str]] = []
+    seen_ids: set[str] = set()
+    for raw in raw_criteria:
+        item = _strict_object(
+            raw,
+            required=frozenset({"id", "text"}),
+            label="acceptance criterion",
+        )
+        criterion_id = item["id"]
+        text = item["text"]
+        if (
+            not isinstance(criterion_id, str)
+            or not criterion_id
+            or criterion_id in seen_ids
+        ):
+            raise ProtocolError(
+                "INVALID_CONTRACT", "criterion ids must be non-empty and unique"
+            )
+        if not isinstance(text, str) or not text.strip():
+            raise ProtocolError("INVALID_CONTRACT", "criterion text must be non-empty")
+        seen_ids.add(criterion_id)
+        criteria.append((criterion_id, text))
+
+    plan = data["verification_plan"]
+    if not isinstance(plan, list):
+        raise ProtocolError("INVALID_CONTRACT", "verification_plan must be an array")
+    mapped: set[str] = set()
+    for raw in plan:
+        item = _strict_object(
+            raw,
+            required=frozenset({"criterion", "verification"}),
+            label="verification plan item",
+        )
+        criterion = item["criterion"]
+        verification = item["verification"]
+        if criterion not in seen_ids or criterion in mapped:
+            raise ProtocolError(
+                "INVALID_CONTRACT",
+                "verification_plan must map each known criterion at most once",
+            )
+        if not isinstance(verification, str) or not verification.strip():
+            raise ProtocolError(
+                "INVALID_CONTRACT", "verification description must be non-empty"
+            )
+        mapped.add(criterion)
+    if mapped != seen_ids:
+        raise ProtocolError(
+            "INVALID_CONTRACT",
+            "verification_plan must cover every acceptance criterion",
+        )
+
+    return FeatureContract(
+        status=data["status"],
+        objective=data["objective"].strip(),
+        acceptance_criteria=tuple(criteria),
+        invariants=invariants,
+        human_decisions_reserved=human_decisions,
+        escalation_conditions=escalation,
+    )
+
+
+@dataclass(frozen=True)
 class EngineerHandoff:
     status: str
     iteration: int
@@ -280,6 +401,7 @@ def parse_engineer_handoff(value: object) -> EngineerHandoff:
 @dataclass(frozen=True)
 class ArchitectReview:
     verdict: str
+    acceptance_results: tuple[tuple[str, str], ...]
     blocking_findings: tuple[str, ...]
     non_blocking_findings: tuple[str, ...]
     residual_uncertainty: tuple[str, ...]
@@ -311,6 +433,7 @@ def parse_architect_review(value: object) -> ArchitectReview:
     criteria = data["acceptance_criteria"]
     if not isinstance(criteria, list):
         raise ProtocolError("INVALID_HANDOFF", "acceptance_criteria must be an array")
+    acceptance_results: list[tuple[str, str]] = []
     for criterion in criteria:
         item = _strict_object(
             criterion,
@@ -324,16 +447,33 @@ def parse_architect_review(value: object) -> ArchitectReview:
             raise ProtocolError("INVALID_HANDOFF", "criterion result is invalid")
         if "evidence" in item and not isinstance(item["evidence"], str):
             raise ProtocolError("INVALID_HANDOFF", "criterion evidence is invalid")
+        acceptance_results.append((item["id"], item["result"]))
+
+    blocking = _string_list(data["blocking_findings"], "blocking_findings")
+    non_blocking = _string_list(
+        data["non_blocking_findings"], "non_blocking_findings"
+    )
+    residual = _string_list(
+        data["residual_uncertainty"], "residual_uncertainty"
+    )
+    if data["verdict"] == "APPROVE":
+        if blocking:
+            raise ProtocolError(
+                "INVALID_REVIEW", "APPROVE cannot contain blocking findings"
+            )
+        if any(result != "PASS" for _, result in acceptance_results):
+            raise ProtocolError(
+                "INVALID_REVIEW", "APPROVE requires every criterion to PASS"
+            )
+    if data["verdict"] == "REQUEST_CHANGES" and not blocking:
+        raise ProtocolError(
+            "INVALID_REVIEW", "REQUEST_CHANGES requires a blocking finding"
+        )
 
     return ArchitectReview(
         verdict=data["verdict"],
-        blocking_findings=_string_list(
-            data["blocking_findings"], "blocking_findings"
-        ),
-        non_blocking_findings=_string_list(
-            data["non_blocking_findings"], "non_blocking_findings"
-        ),
-        residual_uncertainty=_string_list(
-            data["residual_uncertainty"], "residual_uncertainty"
-        ),
+        acceptance_results=tuple(acceptance_results),
+        blocking_findings=blocking,
+        non_blocking_findings=non_blocking,
+        residual_uncertainty=residual,
     )
