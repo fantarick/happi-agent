@@ -1,34 +1,48 @@
-# Security invariants
+# Happi Agent v0.2 project rules
 
-`happi-agent` is a deterministic orchestrator. Codex is an untrusted cognitive
-worker, never the control plane.
+Happi Agent is the deterministic reference implementation of
+`agentic-dev-playbook/v0.2`.
 
-- Keep orchestration, state transitions, collection, validation and retention in
-  deterministic Python.
-- Run at most one job at a time. Do not add subagents, multi-agent execution,
-  parallel jobs, a web UI, Docker or `--full-auto`.
-- Never give Codex sudo, host network access, arbitrary collector commands,
-  writable access to the canonical repository/shared Git directory, or authority
-  to commit, push, open a PR or merge.
-- Invoke subprocesses with structured argv, `shell=False`, bounded timeouts where
-  applicable and structured errors.
-- Treat job YAML as untrusted configuration. Only registered collector IDs are
-  permitted; reject unknown keys and unsupported YAML features.
-- Validation is external to Codex. A successful Codex exit with a rejected diff is
-  `QUARANTINED`, never `FAILED` or `SUCCESS`.
-- Do not delete existing pins, perform garbage collection, or mutate unrelated
-  host/repository state.
+Before editing, read:
+
+- `.ai/CONTRACT.md`
+- `.ai/PROJECT_RULES.md`
+- `docs/PLAYBOOK_REFERENCE_IMPLEMENTATION.md`
+
+## Core invariants
+
+- Keep workflow orchestration deterministic.
+- Do not add unattended model invocation to the v0.2 core.
+- Do not require service-owned ChatGPT/Codex credentials for protocol transitions.
+- Human merge remains mandatory.
+- Enforce the protocol state machine and iteration circuit breaker outside agents.
+- Structured handoffs must be strictly validated before they can authorize a
+  transition.
+- Tests and repository evidence outrank agent narrative.
+- Preserve append-only/auditable evidence for important transitions.
+- Never expose secrets, tokens, private keys, cookies or credential-bearing logs.
+- Do not silently expand scope, weaken acceptance criteria, or broaden autonomy.
+
+## Migration rule
+
+The direct Codex executor inherited from v0.1 is legacy during this branch.
+Do not extend it. Remove or isolate it only in a bounded follow-up change with
+tests proving that deterministic worktree, validation, lock, kill-switch and audit
+behavior are preserved.
+
+## Git authority
+
+Agents may inspect, edit and test within the active contract. Commit, push, PR,
+merge, destructive history changes and deployment remain human-authorized unless
+the active project rules explicitly say otherwise.
 
 ## IPFS safety defaults
 
-Quando opera su IPFS, Codex non espone mai l'API Kubo 5001 su interfacce non-loopback
-e non rende pubblico il gateway 8080 senza richiesta esplicita e preventiva analisi
-dei rischi. Non configura upload pubblici o pinning per terzi, non apre porte sul
-router e non modifica il firewall senza istruzione esplicita. Non pinna contenuti di
-provenienza sconosciuta e non pubblica dati personali, credenziali o informazioni
-riferibili a minori. Non cancella pin preesistenti, non esegue garbage collection e
-non modifica il repository senza backup e richiesta esplicita. Distingue sempre
-cache temporanea, pin intenzionale e pubblicazione; se provenienza, licenza o liceità
-sono incerte, blocca l'operazione e chiede una decisione umana. Le sue valutazioni
-non sono parere legale.
-
+Quando opera su IPFS, il repository engineer non espone mai l'API Kubo 5001 su
+interfacce non-loopback e non rende pubblico il gateway 8080 senza richiesta
+esplicita e preventiva analisi dei rischi. Non configura upload pubblici o pinning
+per terzi, non apre porte sul router e non modifica il firewall senza istruzione
+esplicita. Non pinna contenuti di provenienza sconosciuta e non pubblica dati
+personali, credenziali o informazioni riferibili a minori. Non cancella pin
+preesistenti, non esegue garbage collection e non modifica il repository senza
+backup e richiesta esplicita.
