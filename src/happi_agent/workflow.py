@@ -267,6 +267,23 @@ class WorkflowStore:
                     "WORKFLOW_NOT_FOUND", f"workflow not found: {workflow_id}"
                 )
 
+    def clear_workspace(self, workflow_id: str) -> None:
+        with self._connect() as connection:
+            cursor = connection.execute(
+                """
+                UPDATE workflows
+                SET workspace_id = NULL, workspace_path = NULL,
+                    common_git_dir = NULL, git_file_content = NULL,
+                    git_file_sha256 = NULL, updated_at = ?
+                WHERE workflow_id = ?
+                """,
+                (utc_now(), workflow_id),
+            )
+            if cursor.rowcount != 1:
+                raise WorkflowError(
+                    "WORKFLOW_NOT_FOUND", f"workflow not found: {workflow_id}"
+                )
+
     def workspace(self, workflow_id: str) -> Workspace:
         with self._connect() as connection:
             row = connection.execute(
@@ -356,6 +373,36 @@ class WorkflowStore:
                     utc_now(),
                 ),
             )
+
+    def read_artifact(self, workflow_id: str, name: str) -> bytes:
+        with self._connect() as connection:
+            row = connection.execute(
+                """
+                SELECT path, sha256, size_bytes
+                FROM workflow_artifacts
+                WHERE workflow_id = ? AND name = ?
+                """,
+                (workflow_id, name),
+            ).fetchone()
+        if row is None:
+            raise WorkflowError(
+                "ARTIFACT_NOT_FOUND",
+                f"workflow artifact not found: {workflow_id}/{name}",
+            )
+        path = Path(row["path"])
+        try:
+            data = path.read_bytes()
+        except OSError as exc:
+            raise WorkflowError(
+                "ARTIFACT_READ_ERROR",
+                f"cannot read workflow artifact {name}: {exc}",
+            ) from exc
+        if len(data) != int(row["size_bytes"]) or sha256_bytes(data) != row["sha256"]:
+            raise WorkflowError(
+                "ARTIFACT_INTEGRITY_ERROR",
+                f"workflow artifact failed integrity check: {name}",
+            )
+        return data
 
     def get(self, workflow_id: str) -> dict[str, Any] | None:
         with self._connect() as connection:
@@ -564,15 +611,6 @@ class WorkflowController:
                     "BASE_COMMIT_MOVED",
                     "canonical repository HEAD changed after workflow start",
                 )
-            self._artifacts(workflow_id).write_bytes("contract.json", payload)
-            self.store.transition(
-                workflow_id,
-                WorkflowState.CONTRACT_READY,
-                "CONTRACT_APPROVED",
-                details={
-                    "acceptance_criteria": len(contract.acceptance_criteria),
-                },
-            )
             workspace_id = uuid.uuid4().hex
             workspace = self.workspaces.create(workspace_id)
             if workspace.base_commit != expected_base:
@@ -583,6 +621,15 @@ class WorkflowController:
                     "workspace base differs from workflow base commit",
                 )
             self.store.set_workspace(workflow_id, workspace, workspace_id)
+            self._artifacts(workflow_id).write_bytes("contract.json", payload)
+            self.store.transition(
+                workflow_id,
+                WorkflowState.CONTRACT_READY,
+                "CONTRACT_APPROVED",
+                details={
+                    "acceptance_criteria": len(contract.acceptance_criteria),
+                },
+            )
             return self.store.transition(
                 workflow_id,
                 WorkflowState.ENGINEER_REQUIRED,
@@ -593,6 +640,10 @@ class WorkflowController:
             if workspace is not None:
                 try:
                     self.workspaces.cleanup(workspace)
+                except Exception:
+                    pass
+                try:
+                    self.store.clear_workspace(workflow_id)
                 except Exception:
                     pass
             raise
@@ -741,6 +792,30 @@ class WorkflowController:
                 raise WorkflowError(
                     "WRONG_WORKFLOW_STATE",
                     "architect review is accepted only in REVIEW_REQUIRED",
+                )
+            stored_contract_raw = self._decode_json(
+                self.store.read_artifact(workflow_id, "contract.json"),
+                "stored feature contract",
+            )
+            try:
+                stored_contract = parse_feature_contract(stored_contract_raw)
+            except ProtocolError as exc:
+                raise WorkflowError(
+                    "CONTRACT_ARTIFACT_INVALID",
+                    f"stored feature contract is invalid: {exc.message}",
+                ) from exc
+            expected_criteria = {
+                criterion_id
+                for criterion_id, _ in stored_contract.acceptance_criteria
+            }
+            reviewed_criteria = {
+                criterion_id
+                for criterion_id, _ in review.acceptance_results
+            }
+            if reviewed_criteria != expected_criteria:
+                raise WorkflowError(
+                    "REVIEW_CRITERIA_MISMATCH",
+                    "architect review must cover exactly the contract acceptance criteria",
                 )
             self._artifacts(workflow_id).write_bytes(
                 f"architect-review-{snapshot.iteration:03d}.json", payload
