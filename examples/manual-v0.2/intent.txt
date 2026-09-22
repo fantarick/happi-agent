@@ -1,0 +1,2 @@
+Update one bounded audit document in the disposable repository while preserving
+all unrelated files and requiring deterministic verification and human merge.
