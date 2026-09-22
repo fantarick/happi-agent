@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "id": "machine-audit-happi",
+  "max_files": 12,
+  "max_diff_bytes": 262144,
+  "forbidden_paths": [
+    ".git/**",
+    "**/.git/**",
+    ".github/**",
+    ".codex/**",
+    "AGENTS.md"
+  ],
+  "allowed_paths": [
+    "README.md",
+    "audits/raspberry-pi-5/**",
+    "remediations/raspberry-pi-5/**"
+  ],
+  "allowed_binary_extensions": []
+}
